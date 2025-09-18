@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:myapp/bitemates_signup_screen.dart'; // Import the new signup screen
 
-class BitematesLoginScreen extends StatefulWidget {
-  const BitematesLoginScreen({super.key});
+class BitematesSignupScreen extends StatefulWidget {
+  const BitematesSignupScreen({super.key});
 
   @override
-  State<BitematesLoginScreen> createState() => _BitematesLoginScreenState();
+  State<BitematesSignupScreen> createState() => _BitematesSignupScreenState();
 }
 
-class _BitematesLoginScreenState extends State<BitematesLoginScreen> with SingleTickerProviderStateMixin {
+class _BitematesSignupScreenState extends State<BitematesSignupScreen> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<AlignmentGeometry> _topAlignmentAnimation;
   late Animation<AlignmentGeometry> _bottomAlignmentAnimation;
+
+  // Define the color scheme as class-level constants
+  static const Color primaryOrange = Color(0xFFFF6B35);
+  static const Color darkGrey = Color(0xFF2E2E2E);
+  static const Color softWhite = Color(0xFFF0F0F0);
 
   @override
   void initState() {
@@ -46,11 +49,6 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen> with Single
 
   @override
   Widget build(BuildContext context) {
-    // Define the color scheme
-    const Color primaryOrange = Color(0xFFFF6B35);
-    const Color darkGrey = Color(0xFF2E2E2E);
-    const Color whiteBackground = Colors.white;
-
     return Scaffold(
       body: AnimatedBuilder(
         animation: _controller,
@@ -72,11 +70,11 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen> with Single
                 padding: const EdgeInsets.all(24.0),
                 child: Center(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 400), // Max width for the login card
+                    constraints: const BoxConstraints(maxWidth: 400), // Max width for the sign-up card
                     child: Container(
                       padding: const EdgeInsets.all(30.0),
                       decoration: BoxDecoration(
-                        color: whiteBackground.withAlpha(26), // Slight transparency for glassmorphism
+                        color: softWhite.withAlpha(220), // More white, slight transparency for glassmorphism
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
@@ -91,49 +89,47 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen> with Single
                         children: [
                           Image.asset('assets/images/logo.png', height: 80),
                           const SizedBox(height: 30),
+                          Text(
+                            'Create an Account',
+                            style: GoogleFonts.poppins(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: darkGrey, // Use dark grey for text on white background
+                            ),
+                          ),
+                          const SizedBox(height: 30),
                           _buildInputField(
                             hintText: 'Email',
                             icon: Icons.email_outlined,
-                            textColor: whiteBackground,
-                            hintColor: whiteBackground.withAlpha(179),
-                            borderColor: whiteBackground.withAlpha(128),
-                            fillColor: darkGrey.withAlpha(128),
+                            textColor: darkGrey,
+                            hintColor: darkGrey.withAlpha(179),
+                            borderColor: darkGrey.withAlpha(128),
+                            fillColor: Colors.white.withAlpha(128),
                           ),
                           const SizedBox(height: 20),
                           _buildInputField(
                             hintText: 'Password',
                             icon: Icons.lock_outline,
                             obscureText: true,
-                            textColor: whiteBackground,
-                            hintColor: whiteBackground.withAlpha(179),
-                            borderColor: whiteBackground.withAlpha(128),
-                            fillColor: darkGrey.withAlpha(128),
+                            textColor: darkGrey,
+                            hintColor: darkGrey.withAlpha(179),
+                            borderColor: darkGrey.withAlpha(128),
+                            fillColor: Colors.white.withAlpha(128),
+                          ),
+                          const SizedBox(height: 20),
+                          _buildInputField(
+                            hintText: 'Confirm Password',
+                            icon: Icons.lock_reset,
+                            obscureText: true,
+                            textColor: darkGrey,
+                            hintColor: darkGrey.withAlpha(179),
+                            borderColor: darkGrey.withAlpha(128),
+                            fillColor: Colors.white.withAlpha(128),
                           ),
                           const SizedBox(height: 30),
-                          _buildLoginButton(primaryOrange, whiteBackground),
+                          _buildPrimaryButton(primaryOrange, Colors.white, 'Sign Up', () {}),
                           const SizedBox(height: 15),
-                          _buildTextLinkButton('Forgot Password?', () {}, whiteBackground),
-                          const SizedBox(height: 25),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              _buildSocialButton(FontAwesomeIcons.google, () {}),
-                              const SizedBox(width: 20),
-                              _buildSocialButton(FontAwesomeIcons.apple, () {}),
-                            ],
-                          ),
-                          const SizedBox(height: 25),
-                          Text(
-                            'Don\'t have an account?',
-                            style: GoogleFonts.poppins(
-                              color: whiteBackground.withAlpha(204),
-                              fontSize: 14,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          _buildSignUpButton(darkGrey, whiteBackground, () {
-                            Navigator.push(context, MaterialPageRoute(builder: (context) => const BitematesSignupScreen()));
-                          }),
+                          _buildTextLinkButton('Already have an account? Log In', () { Navigator.pop(context); }, darkGrey),
                         ],
                       ),
                     ),
@@ -171,18 +167,18 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen> with Single
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.white, width: 2.0),
+          borderSide: const BorderSide(color: primaryOrange, width: 2.0),
         ),
         contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
       ),
     );
   }
 
-  Widget _buildLoginButton(Color backgroundColor, Color textColor) {
+  Widget _buildPrimaryButton(Color backgroundColor, Color textColor, String text, VoidCallback onPressed) {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: () {},
+        onPressed: onPressed,
         style: ElevatedButton.styleFrom(
           backgroundColor: backgroundColor,
           padding: const EdgeInsets.symmetric(vertical: 18),
@@ -194,32 +190,9 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen> with Single
             fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
-          foregroundColor: textColor, // Text color
+          foregroundColor: textColor,
         ),
-        child: const Text('Login'),
-      ),
-    );
-  }
-
-  // Modified _buildSignUpButton to accept an onPressed callback
-  Widget _buildSignUpButton(Color backgroundColor, Color textColor, VoidCallback onPressed) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton(
-        onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          side: BorderSide(color: textColor.withAlpha(179), width: 1.5),
-          padding: const EdgeInsets.symmetric(vertical: 18),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          textStyle: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-          foregroundColor: textColor, // Text color
-        ),
-        child: const Text('Sign Up'),
+        child: Text(text),
       ),
     );
   }
@@ -228,28 +201,13 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen> with Single
     return TextButton(
       onPressed: onPressed,
       style: TextButton.styleFrom(
-        foregroundColor: textColor.withAlpha(204), // Text color
+        foregroundColor: textColor.withAlpha(204),
         textStyle: GoogleFonts.poppins(
           fontSize: 14,
           decoration: TextDecoration.underline,
         ),
       ),
       child: Text(text),
-    );
-  }
-
-  Widget _buildSocialButton(IconData icon, VoidCallback onPressed) {
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withAlpha(128), width: 1.5),
-        ),
-        child: FaIcon(icon, color: Colors.white, size: 24),
-      ),
     );
   }
 }
