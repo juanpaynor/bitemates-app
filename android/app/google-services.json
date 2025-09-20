@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "768549973364",
+    "project_id": "bitemates-d6278",
+    "storage_bucket": "bitemates-d6278.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:768549973364:android:acf75d91055529773a1021",
+        "android_client_info": {
+          "package_name": "com.example.myapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB7RJKwIMI3kGIgiOugTG9v9_O6D3p_nP8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
