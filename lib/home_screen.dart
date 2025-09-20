@@ -107,7 +107,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFDF8F3),
+      backgroundColor: const Color.fromRGBO(253, 248, 243, 1),
       appBar: AppBar(
         title: Text(
           'Bitemates',
