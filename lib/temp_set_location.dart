@@ -22,5 +22,5 @@ void main() async {
     'timestamp': FieldValue.serverTimestamp(),
   });
 
-  print("Location for user $userId has been updated.");
+  
 }

@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:myapp/splash_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:lottie/lottie.dart';
 
@@ -34,13 +35,17 @@ Future<void> main() async {
 }
 
 Future<void> precacheLottieAnimation() async {
-  final assetData = await rootBundle.load('assets/animations/searching_for_profile.json');
+  final assetData = await rootBundle.load('assets/animations/Hello.json');
   await LottieComposition.fromByteData(assetData);
 }
 
 final _router = GoRouter(
-  initialLocation: '/',
+  initialLocation: '/splash',
   routes: [
+    GoRoute(
+      path: '/splash',
+      builder: (context, state) => const SplashScreen(),
+    ),
     GoRoute(
       path: '/',
       builder: (context, state) => const AuthWrapper(),
