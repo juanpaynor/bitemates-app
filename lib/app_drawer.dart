@@ -3,11 +3,23 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import 'package:stream_chat_flutter/stream_chat_flutter.dart' hide User;
+
+import 'services/chat_service.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
 
   Future<void> _signOut(BuildContext context) async {
+    try {
+      final chatClient = Provider.of<StreamChatClient>(context, listen: false);
+      final chatService = ChatService(chatClient);
+      await chatService.disconnectUser();
+    } catch (e) {
+      // Log the error but don't block the sign-out process
+      print('Error disconnecting from Stream: $e');
+    }
     await FirebaseAuth.instance.signOut();
     context.go('/login');
   }

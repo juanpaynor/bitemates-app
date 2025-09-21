@@ -4,6 +4,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myapp/bitemates_signup_screen.dart';
+import 'package:provider/provider.dart';
+import 'package:stream_chat_flutter/stream_chat_flutter.dart' hide User;
+
+import 'services/chat_service.dart';
 
 class BitematesLoginScreen extends StatefulWidget {
   const BitematesLoginScreen({super.key});
@@ -21,7 +25,6 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen>
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
-  // Branding colors from logo
   final Color brandOrange = const Color(0xFFFF6B35);
   final Color brandBlack = const Color(0xFF2B2B2B);
   final Color brandBackground = const Color(0xFFF8F6EF);
@@ -33,34 +36,57 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen>
     try {
       final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
 
-      if (mounted) {
-        if (userDoc.exists) {
-          final userData = userDoc.data()!;
-          final additionalInfoCompleted = userData['additional_info_completed'] ?? false;
-          final quizCompleted = userData['quiz_completed'] ?? false;
+      if (!mounted) return; // Re-check mounted status after await
 
-          if (!additionalInfoCompleted) {
-            context.go('/additional-info');
-          } else if (!quizCompleted) {
-            context.go('/quiz');
-          } else {
-            context.go('/home');
-          }
-        } else {
-          // If user doc doesn't exist for some reason, send to add info.
-          context.go('/additional-info');
+      String nickname = 'No Nickname';
+      String photoUrl = '';
+
+      if (userDoc.exists) {
+        final data = userDoc.data() as Map<String, dynamic>;
+        final nicknameData = data['nickname'];
+        if (nicknameData is String) {
+          nickname = nicknameData;
+        }
+        final photoUrlData = data['photoUrl'];
+        if (photoUrlData is String) {
+          photoUrl = photoUrlData;
         }
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error checking user data: $e')),
-        );
-        // As a fallback, go to the additional info screen
+
+      // --- Connect to Stream Chat in the background ---
+      final chatClient = Provider.of<StreamChatClient>(context, listen: false);
+      final chatService = ChatService(chatClient);
+      // No 'await' here. Let it run without blocking the UI.
+      chatService.connectUser(user, nickname, photoUrl).catchError((e) {
+        print("Background Stream connection failed: $e");
+      });
+      // --- End background connection ---
+
+      // Navigate immediately based on user data
+      if (userDoc.exists) {
+        final userData = userDoc.data()!;
+        final additionalInfoCompleted = userData['additional_info_completed'] ?? false;
+        final quizCompleted = userData['quiz_completed'] ?? false;
+
+        if (!additionalInfoCompleted) {
+          context.go('/additional-info');
+        } else if (!quizCompleted) {
+          context.go('/quiz');
+        } else {
+          context.go('/home');
+        }
+      } else {
         context.go('/additional-info');
       }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error during login process: $e')),
+      );
+      await FirebaseAuth.instance.signOut();
+      context.go('/login');
     }
-}
+  }
 
   Future<void> _login() async {
     setState(() {
@@ -73,7 +99,6 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen>
       );
       await _handleLoginSuccess();
     } on FirebaseAuthException catch (e) {
-      // Handle login errors
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.message ?? 'Login failed')),
@@ -120,19 +145,15 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen>
               opacity: _animation,
               child: Column(
                 children: [
-                  // Logo
                   Image.asset('assets/images/logo.png', height: 220),
                   const SizedBox(height: 20),
-
                   const SizedBox(height: 40),
-                  // Email
                   _buildInputField(
                     controller: _emailController,
                     hintText: 'Email Address',
                     icon: Icons.email_outlined,
                   ),
                   const SizedBox(height: 20),
-                  // Password
                   _buildInputField(
                     controller: _passwordController,
                     hintText: 'Password',
@@ -140,7 +161,6 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen>
                     obscureText: true,
                   ),
                   const SizedBox(height: 30),
-                  // Login Button
                   _isLoading
                       ? const CircularProgressIndicator()
                       : _buildLoginButton(),
@@ -156,7 +176,6 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen>
                     ),
                   ),
                   const SizedBox(height: 40),
-                  // Signup
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [

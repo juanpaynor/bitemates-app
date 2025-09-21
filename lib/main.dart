@@ -8,11 +8,17 @@ import 'package:go_router/go_router.dart';
 import 'package:myapp/splash_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:lottie/lottie.dart';
+// Hide the Stream User class to avoid conflict with Firebase User
+import 'package:stream_chat_flutter/stream_chat_flutter.dart' hide User;
+// Import the Firebase User class explicitly
+import 'package:firebase_auth/firebase_auth.dart' show User;
 
 import 'additional_info_screen.dart';
 import 'bitemates_login_screen.dart';
+import 'chat_screen.dart';
 import 'home_screen.dart';
 import 'matching_screen.dart';
+import 'my_group_screen.dart';
 import 'quiz_intro_screen.dart';
 import 'quiz_question_screen.dart';
 import 'quiz_results_screen.dart';
@@ -27,9 +33,18 @@ Future<void> main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
   await precacheLottieAnimation();
+  
+  final client = StreamChatClient(
+    '4gk8q5z64nx5',
+    logLevel: Level.INFO,
+  );
+
   runApp(
-    ChangeNotifierProvider(
-      create: (context) => QuizState(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (context) => QuizState()),
+        Provider<StreamChatClient>(create: (context) => client),
+      ],
       child: const MyApp(),
     ),
   );
@@ -83,6 +98,17 @@ final _router = GoRouter(
       path: '/edit-profile',
       builder: (context, state) => const EditProfileScreen(),
     ),
+    GoRoute(
+      path: '/my-group',
+      builder: (context, state) => const MyGroupScreen(),
+    ),
+    GoRoute(
+      path: '/chat/:channelId',
+      builder: (context, state) {
+        final channelId = state.pathParameters['channelId']!;
+        return ChatScreen(channelId: channelId);
+      },
+    ),
   ],
 );
 
@@ -98,6 +124,13 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.deepOrange,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
+      builder: (context, child) {
+        // The StreamChat widget needs to be available in the widget tree
+        return StreamChat(
+          client: Provider.of<StreamChatClient>(context),
+          child: child!,
+        );
+      },
     );
   }
 }

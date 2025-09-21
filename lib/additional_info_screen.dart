@@ -372,7 +372,7 @@ class _AdditionalInfoScreenState extends State<AdditionalInfoScreen> with Single
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Lottie.asset('assets/animations/loading.json', width: 200, height: 200),
+          Lottie.asset('assets/animations/Loading.json', width: 200, height: 200),
           const SizedBox(height: 20),
           Text('Saving Your Profile...', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600, color: brandBlack)),
         ],

@@ -5,10 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
-import 'package:location/location.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:myapp/app_drawer.dart';
-import 'location_service.dart';
 import 'dart:developer' as developer;
 
 class HomeScreen extends StatefulWidget {
@@ -21,15 +19,33 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final LocationService _locationService = LocationService();
 
   User? _user;
   DocumentSnapshot? _userDoc;
-  LocationData? _currentLocation;
   bool _isLoading = true;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
+
+  final Map<String, String> _locations = {
+    'Muntinlupa/Alabang': 'southies',
+    'Las Pinas': 'southies',
+    'Paranaque': 'southies',
+    'Pasay': 'middle',
+    'Makati': 'middle',
+    'Manila': 'middle',
+    'Taguig': 'middle',
+    'Mandaluyong': 'middle',
+    'Pasig': 'middle',
+    'San Juan': 'middle',
+    'Quezon City': 'northies',
+    'Marikina': 'northies',
+    'South Caloocan': 'northies',
+    'Navotas': 'northies',
+    'Malabon': 'northies',
+    'Valenzuela': 'northies',
+    'North Caloocan': 'northies',
+  };
 
   @override
   void initState() {
@@ -71,7 +87,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         _isLoading = false;
       });
       _animationController.forward();
-      _initializeLocation();
+      _checkAndPromptForLocation();
     }
   }
 
@@ -81,36 +97,38 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  Future<void> _initializeLocation() async {
-    try {
-      final locationData = await _locationService.getCurrentLocation().timeout(const Duration(seconds: 10));
-      if (locationData != null) {
-        if (mounted) {
-          setState(() {
-            _currentLocation = locationData;
-          });
-        }
-        _saveUserLocation();
-        developer.log(
-          'User location: ${_currentLocation!.latitude}, ${_currentLocation!.longitude}',
-          name: 'com.bitemates.location',
-        );
-      } else {
-        developer.log('Could not fetch location', name: 'com.bitemates.location');
-      }
-    } catch (e) {
-      developer.log('Error getting location: $e', name: 'com.bitemates.location', error: e);
+  Future<void> _checkAndPromptForLocation() async {
+    if (_userDoc == null || !_userDoc!.exists) return;
+
+    final data = _userDoc!.data() as Map<String, dynamic>?;
+    if (data == null || data['sector'] == null || data['sector'] == '') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showLocationPrompt();
+      });
     }
   }
 
-  Future<void> _saveUserLocation() async {
-    if (_user != null && _currentLocation != null) {
-      await _firestore.collection('user_locations').doc(_user!.uid).set({
-        'latitude': _currentLocation!.latitude,
-        'longitude': _currentLocation!.longitude,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-    }
+  void _showLocationPrompt() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return _LocationSelectionDialog(
+          locations: _locations,
+          onSave: (selectedLocation, selectedSector) async {
+            if (_user != null) {
+              await _firestore.collection('users').doc(_user!.uid).update({
+                'location': selectedLocation,
+                'sector': selectedSector,
+              });
+              await _loadUserData();
+              setState(() {});
+              Navigator.of(context).pop();
+            }
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -148,36 +166,31 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFFDE6A4D)))
           : _user == null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.error_outline, color: Colors.red, size: 60),
-                        const SizedBox(height: 20),
-                        const Text(
-                          'Authentication Error',
-                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 10),
-                        const Text(
-                          'Could not verify user session. Please try logging in again.',
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 20),
-                        ElevatedButton(
-                          onPressed: () {
-                             context.go('/login');
-                          },
-                          child: const Text('Go to Login'),
-                        )
-                      ],
-                    ),
-                  ),
-                )
+              ? _buildErrorState()
               : _buildHomeScreenContent(),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, color: Colors.red, size: 60),
+            const SizedBox(height: 20),
+            const Text('Authentication Error', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+            const SizedBox(height: 10),
+            const Text('Could not verify user session. Please try logging in again.', textAlign: TextAlign.center),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () => context.go('/login'),
+              child: const Text('Go to Login'),
+            )
+          ],
+        ),
+      ),
     );
   }
 
@@ -192,9 +205,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               duration: const Duration(milliseconds: 375),
               childAnimationBuilder: (widget) => SlideAnimation(
                 verticalOffset: 50.0,
-                child: FadeInAnimation(
-                  child: widget,
-                ),
+                child: FadeInAnimation(child: widget),
               ),
               children: [
                 _buildFindGroupButton(),
@@ -211,6 +222,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildFindGroupButton() {
+    // ... same as before
     return FadeTransition(
       opacity: _fadeAnimation,
       child: SlideTransition(
@@ -243,6 +255,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildCurrentGroupSection() {
+    // ... same as before
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -282,9 +295,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
               const SizedBox(height: 20),
               ElevatedButton(
-                onPressed: () {
-                  // Placeholder for chat functionality
-                },
+                onPressed: () => context.go('/my-group'),
                 style: ElevatedButton.styleFrom(
                   foregroundColor: const Color(0xFFDE6A4D),
                   backgroundColor: const Color(0xFFFDF8F3),
@@ -307,6 +318,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildAvatar(String imageUrl, String name) {
+    // ... same as before
     return Column(
       children: [
         CircleAvatar(
@@ -335,6 +347,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildBottomTabs() {
+    // ... same as before
     return Column(
       children: [
         _buildTabCard(
@@ -342,7 +355,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           title: 'Explore Events',
           subtitle: 'Community dinners, trivia nights & more',
           color: const Color(0xFF5ABCB9),
-          onTap: () => context.go('/restaurants'), // Navigate to restaurants list
+          onTap: () => context.go('/restaurants'),
         ),
         const SizedBox(height: 20),
         _buildTabCard(
@@ -362,6 +375,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     required Color color,
     VoidCallback? onTap,
   }) {
+    // ... same as before
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -408,6 +422,64 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ],
         ),
       ),
+    );
+  }
+}
+
+class _LocationSelectionDialog extends StatefulWidget {
+  final Map<String, String> locations;
+  final Function(String, String) onSave;
+
+  const _LocationSelectionDialog({required this.locations, required this.onSave});
+
+  @override
+  State<_LocationSelectionDialog> createState() => _LocationSelectionDialogState();
+}
+
+class _LocationSelectionDialogState extends State<_LocationSelectionDialog> {
+  String? _selectedLocation;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Set Your Location', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('This helps us find the best bitemates near you.', style: GoogleFonts.poppins()),
+          const SizedBox(height: 20),
+          DropdownButtonFormField<String>(
+            value: _selectedLocation,
+            hint: const Text('Choose your city/area'),
+            isExpanded: true,
+            onChanged: (value) {
+              setState(() {
+                _selectedLocation = value;
+              });
+            },
+            items: widget.locations.keys.map<DropdownMenuItem<String>>((String value) {
+              return DropdownMenuItem<String>(
+                value: value,
+                child: Text(value),
+              );
+            }).toList(),
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(horizontal: 16),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _selectedLocation == null ? null : () {
+            final selectedSector = widget.locations[_selectedLocation!]!;
+            widget.onSave(_selectedLocation!, selectedSector);
+          },
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }
