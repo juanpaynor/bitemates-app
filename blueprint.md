@@ -1,114 +1,60 @@
 
-# Bitemates Application Blueprint
+# Blueprint
 
 ## Overview
 
-This document outlines the architecture, features, and design of the Bitemates Flutter application. It serves as a single source of truth for the application's structure and functionality.
+This document outlines the plan for developing a Flutter application with Firebase integration. The application will include features for user authentication, a personality quiz, and matching users based on their quiz results.
 
-## Current Implementation Plan
+## Current Plan
 
-### Authentication and Routing Flow
+### Edit Profile Screen Enhancements
 
-When a user opens the app, the `AuthWrapper` widget will check the user's authentication state. 
+The following features will be added to the Edit Profile screen:
 
-1.  **If the user is not logged in**, they will be directed to the `BitematesLoginScreen`.
-2.  **If the user is logged in**, the app will fetch the user's data from the `users` collection in Firestore.
-    *   If the user's document does not exist, or if the `additional_info_completed` flag is `false`, the user will be directed to the `AdditionalInfoScreen`.
-    *   If `additional_info_completed` is `true` but the `quiz_completed` flag is `false`, the user will be directed to the `QuizIntroScreen` to complete the personality quiz.
-    *   If both `additional_info_completed` and `quiz_completed` are `true`, the user will be directed to the `HomeScreen`.
+*   **Profile Picture Management:**
+    *   Allow users to replace their existing profile picture with a new one from their device's gallery.
+    *   Allow users to delete their current profile picture, which will revert to a default placeholder.
+*   **Editable Profile Fields:**
+    *   **Nickname:** A text field to update the user's nickname.
+    *   **Age:** A text field to update the user's age.
+    *   **Bio:** A text field to update the user's bio.
+*   **Retake Quiz:**
+    *   A button that allows users to retake the personality quiz.
 
-### Home Screen UI
+### Implementation Steps
 
-The home screen provides a central hub for users to find groups, view their current group, and explore other features.
+1.  **Update `edit_profile_screen.dart`:**
+    *   Add UI elements for profile picture replacement and deletion.
+    *   Incorporate `TextField` widgets for editing the nickname, age, and bio.
+    *   Add a "Retake Quiz" button.
+2.  **Update `user_service.dart`:**
+    *   Implement a method to handle the uploading of the new profile picture to Firebase Storage and updating the user's profile data in Firestore.
+    *   Implement a method to remove the profile picture URL from the user's profile data in Firestore.
+    *   Create methods to update the nickname, age, and bio fields in the user's Firestore document.
+3.  **Integrate Image Picker:**
+    *   Use the `image_picker` package to allow users to select an image from their gallery.
+4.  **State Management:**
+    *   Use a `ChangeNotifier` or similar state management solution to manage the state of the editable fields and reflect changes in the UI.
+5.  **Navigation:**
+    *   Configure the "Retake Quiz" button to navigate to the `quiz_intro_screen.dart`.
 
-*   **"Find Your Group" Button**: A large, centered button at the top of the screen that initiates the group finding process. When tapped, it navigates to the `/matching` route.
-*   **Recent Group Section**: Displays the user's most recent group, including member avatars and a "Go to Chat" button.
-*   **Bottom Tabs**:
-    *   **Explore Events**: A card that navigates to a section for community-hosted events like dinners and trivia nights.
-    *   **Connections**: A card that navigates to a list of the user's saved friends and contacts.
+## Style and Design
 
-### Matching Screen
+*   **Theme:** Modern, clean, and visually appealing.
+*   **Color Palette:** A vibrant and energetic color palette will be used to create a positive user experience.
+*   **Typography:** Expressive and relevant typography will be used to emphasize key information and create a clear visual hierarchy.
+*   **Iconography:** Icons will be used to enhance understanding and navigation.
+*   **Interactivity:** Interactive elements will have a "glow" effect to provide visual feedback.
 
-When a user taps the "Find Your Group" button, they are taken to the `MatchingScreen`. This screen provides visual feedback while the app searches for compatible bitemates in the background.
+## Features
 
-*   **Lottie Animation**: A prominent Lottie animation (`searching for profile.json`) is displayed to engage the user during the waiting period.
-*   **Descriptive Text**: Text such as "Finding your bitemates..." informs the user of the current process.
-*   **Cancel Button**: A "Cancel Search" button allows the user to exit the matching process and return to the previous screen.
-*   **Navigation**: The route for this screen is `/matching`.
+*   **User Authentication:**
+    *   Login and signup screens.
+    *   Firebase Authentication for secure user management.
+*   **Personality Quiz:**
+    *   A multi-question quiz to determine a user's personality type.
+*   **User Matching:**
+    *   A matching screen that displays users with similar quiz results.
+*   **Profile Editing:**
+    *   The ability for users to edit their profile information.
 
-### Firestore Schema: `users` Collection
-
-This section defines the database schema for the `users` collection in Firestore.
-
-#### Collection Path
-`/users`
-
-#### Document ID
-The Document ID for each user document should be the user's Firebase Authentication UID.
-
-#### Fields
-| Field Name        | Data Type           | Description                                                                                                |
-|-------------------|---------------------|------------------------------------------------------------------------------------------------------------|
-| `full_name`       | `string`            | The user's full name.                                                                                      |
-| `nickname`        | `string`            | The user's chosen nickname.                                                                                |
-| `bio`             | `string`            | A short biography of the user (max 150 characters).                                                        |
-| `age`             | `number`            | The user's age.                                                                                            |
-| `email`           | `string`            | The user's email address (matches the one in Firebase Auth).                                               |
-| `quiz_completed`  | `boolean`           | A flag to indicate if the user has completed the initial personality quiz. `true` or `false`.              |
-| `additional_info_completed` | `boolean` | A flag to indicate if the user has completed the additional info screen. `true` or `false`.          |
-| `created_at`      | `timestamp`         | The server timestamp when the user document was created.                                                   |
-| `personality`     | `map`               | A map containing the user's personality traits derived from the quiz.                                      |
-| nested `extraversion` | `number`            | A score from 1-10 indicating the user's level of extraversion.                                             |
-| nested `chill_factor` | `number`            | A score from 1-10 indicating how "chill" the user is.                                                      |
-| nested `openness`   | `number`            | A score from 1-10 indicating the user's openness to new experiences.                                       |
-| nested `interests`  | `array` of `string` | A list of the user's selected interests (e.g., "Hiking", "Movies", "Gaming").                              |
-| nested `conversation_style` | `string`| Describes the user's preferred style of conversation (e.g., "Deep talks", "Witty banter", "Easygoing"). |
-
-
-### Example User Document
-
-Here is an example of a user document. You can use this structure to manually create a new document in the Firebase Console for testing.
-
-**Collection:** `users`
-**Document ID:** `aLg849...pXfV2m` (This would be the actual Firebase Auth UID)
-
-```json
-{
-  "full_name": "Jane Doe",
-  "nickname": "Janie",
-  "bio": "Lover of coffee, music, and spontaneous adventures.",
-  "age": 28,
-  "email": "jane.doe@example.com",
-  "quiz_completed": false,
-  "additional_info_completed": true,
-  "created_at": "2023-10-27T10:00:00Z",
-  "personality": {
-    "extraversion": 0,
-    "chill_factor": 0,
-    "openness": 0,
-    "interests": [],
-    "conversation_style": ""
-  }
-}
-```
-
-### Recommended Firestore Security Rules (MVP)
-
-These rules provide a secure starting point for your MVP. They ensure that users can only read and write their own data.
-
-You can copy and paste this into the **Rules** tab of your Firestore database in the Firebase Console.
-
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Users Collection
-    match /users/{userId} {
-      // A user can create their own document, read it, and update it.
-      // Nobody can delete a user document for this MVP.
-      allow read, create, update: if request.auth != null && request.auth.uid == userId;
-      allow delete: if false;
-    }
-  }
-}
-```

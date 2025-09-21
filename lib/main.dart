@@ -17,6 +17,7 @@ import 'quiz_intro_screen.dart';
 import 'quiz_question_screen.dart';
 import 'quiz_results_screen.dart';
 import 'quiz_state.dart';
+import 'edit_profile_screen.dart';
 
 import 'firebase_options.dart';
 
@@ -77,6 +78,10 @@ final _router = GoRouter(
     GoRoute(
       path: '/matching',
       builder: (context, state) => const MatchingScreen(),
+    ),
+    GoRoute(
+      path: '/edit-profile',
+      builder: (context, state) => const EditProfileScreen(),
     ),
   ],
 );

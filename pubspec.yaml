@@ -20,10 +20,11 @@ dependencies:
   cloud_firestore: ^6.0.1
   flutter_staggered_animations: ^1.1.1
   lottie: ^3.3.2
-  google_maps_flutter: ^2.13.1
   dio: ^5.9.0
   location: ^8.0.1
   cached_network_image: ^3.4.1
+  image_picker: ^1.2.0
+  firebase_storage: ^13.0.1
 
 dev_dependencies:
   flutter_test:

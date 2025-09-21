@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:location/location.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:myapp/app_drawer.dart';
 import 'location_service.dart';
 import 'dart:developer' as developer;
 
@@ -23,6 +24,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   final LocationService _locationService = LocationService();
 
   User? _user;
+  DocumentSnapshot? _userDoc;
   LocationData? _currentLocation;
   bool _isLoading = true;
   late AnimationController _animationController;
@@ -32,8 +34,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
-    _initialize();
-
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
@@ -46,23 +46,38 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _slideAnimation = Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
     );
+
+    _initialize();
   }
 
   Future<void> _initialize() async {
+    _user = _auth.currentUser;
+
+    if (_user == null) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      _user = _auth.currentUser;
+      if (_user == null) {
+        if (mounted) {
+          developer.log('Error: HomeScreen accessed without a logged-in user.', name: 'com.bitemates.auth');
+          setState(() => _isLoading = false);
+        }
+        return;
+      }
+    }
+
     await _loadUserData();
     if (mounted) {
       setState(() {
         _isLoading = false;
       });
       _animationController.forward();
-      _initializeLocation(); // Initialize location after the UI is built
+      _initializeLocation();
     }
   }
 
   Future<void> _loadUserData() async {
-    _user = _auth.currentUser;
     if (_user != null) {
-      await _firestore.collection('users').doc(_user!.uid).get();
+      _userDoc = await _firestore.collection('users').doc(_user!.uid).get();
     }
   }
 
@@ -120,18 +135,48 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Color(0xFFDE6A4D)),
-            onPressed: () async {
-              await _auth.signOut();
-            },
+          Builder(
+            builder: (context) => IconButton(
+              icon: const Icon(Icons.menu, color: Color(0xFFDE6A4D)),
+              onPressed: () => Scaffold.of(context).openDrawer(),
+              tooltip: 'Open settings',
+            ),
           ),
         ],
       ),
+      drawer: const AppDrawer(),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFFDE6A4D)))
           : _user == null
-              ? const Center(child: Text('No user is logged in.'))
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.error_outline, color: Colors.red, size: 60),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'Authentication Error',
+                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 10),
+                        const Text(
+                          'Could not verify user session. Please try logging in again.',
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 20),
+                        ElevatedButton(
+                          onPressed: () {
+                             context.go('/login');
+                          },
+                          child: const Text('Go to Login'),
+                        )
+                      ],
+                    ),
+                  ),
+                )
               : _buildHomeScreenContent(),
     );
   }

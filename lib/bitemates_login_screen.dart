@@ -28,18 +28,39 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen>
 
   Future<void> _handleLoginSuccess() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (user == null || !mounted) return;
 
-    final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    try {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
 
-    if (mounted) {
-      if (userDoc.exists && userDoc.data()!['additional_info_completed'] == true) {
-        context.go('/quiz');
-      } else {
+      if (mounted) {
+        if (userDoc.exists) {
+          final userData = userDoc.data()!;
+          final additionalInfoCompleted = userData['additional_info_completed'] ?? false;
+          final quizCompleted = userData['quiz_completed'] ?? false;
+
+          if (!additionalInfoCompleted) {
+            context.go('/additional-info');
+          } else if (!quizCompleted) {
+            context.go('/quiz');
+          } else {
+            context.go('/home');
+          }
+        } else {
+          // If user doc doesn't exist for some reason, send to add info.
+          context.go('/additional-info');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error checking user data: $e')),
+        );
+        // As a fallback, go to the additional info screen
         context.go('/additional-info');
       }
     }
-  }
+}
 
   Future<void> _login() async {
     setState(() {
