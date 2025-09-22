@@ -130,23 +130,29 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         _groupId = null;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('You have left the group.'), backgroundColor: Colors.green),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You have left the group.'), backgroundColor: Colors.green),
+        );
+      }
       
       _refreshGroupData();
 
 
     } on FirebaseFunctionsException catch (e) {
       developer.log('Error leaving group: ${e.message}', name: 'com.bitemates.error');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error leaving group: ${e.message}'), backgroundColor: Colors.red),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error leaving group: ${e.message}'), backgroundColor: Colors.red),
+        );
+      }
     } catch (e) {
       developer.log('Unexpected error leaving group: $e', name: 'com.bitemates.error');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('An unexpected error occurred.'), backgroundColor: Colors.red),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('An unexpected error occurred.'), backgroundColor: Colors.red),
+        );
+      }
     }
 }
 
@@ -196,7 +202,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final data = _userDoc!.data() as Map<String, dynamic>?;
     if (data == null || data['sector'] == null || data['sector'] == '') {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showLocationPrompt();
+        if(mounted) {
+          _showLocationPrompt();
+        }
       });
     }
   }
@@ -216,7 +224,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               });
               await _loadUserData();
               setState(() {});
-              Navigator.of(context).pop();
+              if (mounted) {
+                Navigator.of(context).pop();
+              }
             }
           },
         );
@@ -321,6 +331,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         position: _slideAnimation,
         child: ElevatedButton.icon(
           onPressed: () {
+            // The matching screen will call the function, so we just navigate.
             context.go('/matching');
           },
           icon: const Icon(Icons.search, size: 22),

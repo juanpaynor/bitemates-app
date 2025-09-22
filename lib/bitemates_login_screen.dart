@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -34,7 +35,10 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen>
     if (user == null || !mounted) return;
 
     try {
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
 
       if (!mounted) return; // Re-check mounted status after await
 
@@ -58,14 +62,16 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen>
       final chatService = ChatService(chatClient);
       // No 'await' here. Let it run without blocking the UI.
       chatService.connectUser(user, nickname, photoUrl).catchError((e) {
-        print("Background Stream connection failed: $e");
+        developer.log("Background Stream connection failed: $e");
       });
       // --- End background connection ---
 
       // Navigate immediately based on user data
+      if (!mounted) return;
       if (userDoc.exists) {
         final userData = userDoc.data()!;
-        final additionalInfoCompleted = userData['additional_info_completed'] ?? false;
+        final additionalInfoCompleted =
+            userData['additional_info_completed'] ?? false;
         final quizCompleted = userData['quiz_completed'] ?? false;
 
         if (!additionalInfoCompleted) {
@@ -84,6 +90,7 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen>
         SnackBar(content: Text('Error during login process: $e')),
       );
       await FirebaseAuth.instance.signOut();
+      if (!mounted) return;
       context.go('/login');
     }
   }
@@ -97,6 +104,7 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen>
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
+      if (!mounted) return;
       await _handleLoginSuccess();
     } on FirebaseAuthException catch (e) {
       if (mounted) {

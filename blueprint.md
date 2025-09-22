@@ -1,54 +1,61 @@
-# Project Blueprint: BiteMates
+# BiteMates App Blueprint
 
 ## Overview
 
-BiteMates is a social matching application that connects users by creating small, compatible groups for shared activities. The core of the application is a matching algorithm that uses user-provided quiz data and location information to form these groups.
+BiteMates is a social application designed to connect users with similar food preferences. It facilitates finding dining partners and forming groups for shared meals. The app includes features like a food preference quiz, user matching, group chat, and profile customization.
 
-## Core Features Implemented
+## Implemented Features
 
-*   **Authentication:**
-    *   Email & Password signup and login.
-    *   Google Sign-In.
-*   **User Profile:**
-    *   Users can create and edit a profile with their full name, nickname, bio, age, and a profile picture.
-    *   Profile pictures are uploaded to Firebase Storage.
-*   **Matching Quiz:**
-    *   A multi-step quiz captures user personality traits (Extraversion, Chill Factor, Openness), interests, and conversation style.
-    *   Quiz answers are stored in the user's Firestore document.
-*   **Cloud Function (`createGroups`):**
-    *   An HTTPS-triggered function that groups users based on compatibility scores and location (`sector`).
-    *   The function is designed to create groups of 5.
+*   **Authentication:** User login and signup screens.
+*   **Onboarding:** A multi-step quiz to capture user's food preferences, dietary restrictions, and eating habits.
+*   **User Matching:** A matching screen that displays potential dining partners based on quiz results.
+*   **Group Formation:** Users can form groups with their matches.
+*   **Group Chat:** A chat interface for communication within a group.
+*   **Profile Management:** Users can view and edit their profile information.
+*   **Settings:** A settings screen for application-level configurations.
+*   **Navigation:** A drawer-based navigation system to switch between different sections of the app.
 
-## Current Development Plan: Location/Sector Feature
+## Current Plan: Codebase Analysis and Remediation
 
-**Objective:** Implement a mandatory location selection for all users to enable location-based matching. This will resolve the current failure in the `createGroups` function and improve match quality.
+The following plan outlines the steps to address the issues identified by the `flutter analyze` command. The goal is to improve code quality, fix potential bugs, and ensure the long-term maintainability of the application.
 
-**Phase 1: Home Screen Prompt**
+### 1. Fix Critical `use_build_context_synchronously` Warnings
 
-1.  **Check for `sector` on `HomeScreen`:** When the main screen loads, fetch the user's data from Firestore.
-2.  **Display Prompt:** If the `sector` field is missing or empty, show an alert dialog or banner prompting the user to set their location.
-3.  **Location Selection UI:** The prompt will lead to a modal dialog with a dropdown menu.
-4.  **Dropdown Options:** The dropdown will contain the following locations, which will be mapped to a `sector` (`southies`, `middle`, `northies`):
-    *   Muntinlupa/Alabang - `southies`
-    *   Las Pinas - `southies`
-    *   Paranaque - `southies`
-    *   Pasay - `middle`
-    *   Makati - `middle`
-    *   Manila - `middle`
-    *   Taguig - `middle`
-    *   Mandaluyong - `middle`
-    *   Pasig - `middle`
-    *   San Juan - `middle`
-    *   Quezon city - `northies`
-    *   Marikina - `northies`
-    *   South Caloocan - `northies`
-    *   Navotas - `northies`
-    *   Malabon - `northies`
-    *   Valenzuela - `northies`
-    *   North Caloocan - `northies`
-5.  **Update Firestore:** Upon selection, update the user's document with the chosen `location` and the corresponding `sector`.
+This is the highest priority to prevent potential application crashes. I will add `mounted` checks before using `BuildContext` after an asynchronous operation in the following files:
 
-**Phase 2: Edit Profile Integration**
+*   `lib/bitemates_login_screen.dart`
+*   `lib/home_screen.dart`
+*   `lib/my_group_screen.dart`
+*   `lib/settings_screen.dart`
 
-1.  **Add Location Field:** Add a dropdown menu for "Location" in the `edit_profile_screen.dart`.
-2.  **Functionality:** Allow users to view and update their location at any time. Saving the change will update both the `location` and `sector` fields in their Firestore document.
+### 2. Replace Deprecated Code
+
+To ensure future compatibility and adhere to best practices, I will replace all deprecated members:
+
+*   **`withOpacity`:** Replace with `.withValues()` in:
+    *   `lib/additional_info_screen.dart`
+    *   `lib/edit_profile_screen.dart`
+*   **`TextFormField.value`:** Replace with `initialValue` in:
+    *   `lib/edit_profile_screen.dart`
+    *   `lib/home_screen.dart`
+
+### 3. Improve Error Handling and Logging
+
+I will enhance the application's logging and error handling mechanisms:
+
+*   **Replace `print` with `developer.log`:** For better debugging and to remove `avoid_print` warnings in:
+    *   `lib/bitemates_login_screen.dart`
+    *   `lib/services/chat_service.dart`
+*   **Use `rethrow` for exceptions:** To preserve the original stack trace in `lib/services/chat_service.dart`.
+
+### 4. Code Refactoring and Cleanup
+
+I will address the remaining warnings to improve code quality and readability:
+
+*   **Refactor `library_private_types_in_public_api`:** Fix the private type exposure in `lib/my_group_screen.dart`.
+*   **Remove Unused Code:**
+    *   Remove unused imports in `lib/additional_info_screen.dart` and `lib/user_service.dart`.
+    *   Remove the unused `brandOrange` variable in `lib/settings_screen.dart`.
+    *   Remove the unnecessary import in `lib/user_service.dart`.
+
+By following this plan, I will systematically improve the codebase, making it more robust, stable, and easier to maintain.
