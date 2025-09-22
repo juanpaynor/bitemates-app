@@ -16,113 +16,64 @@ class MatchingScreen extends StatefulWidget {
 
 class _MatchingScreenState extends State<MatchingScreen> with TickerProviderStateMixin {
   late final AnimationController _animationController;
-  StreamSubscription? _groupSubscription;
-  bool _isMatching = false;
+  StreamSubscription<DocumentSnapshot>? _userSubscription;
   String _statusText = 'Finding your bitemates...';
 
   @override
   void initState() {
     super.initState();
     _animationController = AnimationController(vsync: this);
-    _startMatchingProcess();
+    _initiateMatching();
+    _listenForGroupChanges();
   }
 
   @override
   void dispose() {
     _animationController.dispose();
-    _groupSubscription?.cancel();
+    _userSubscription?.cancel();
     super.dispose();
   }
 
-  void _startMatchingProcess() async {
+  Future<void> _initiateMatching() async {
+    try {
+      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('createGroups');
+      callable.call(); // Fire and forget
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _statusText = "An error occurred while finding your group. Please try again later.";
+        });
+      }
+    }
+  }
+
+  void _listenForGroupChanges() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       if (mounted) context.go('/login');
       return;
     }
 
-    setState(() {
-      _isMatching = true;
-      _statusText = 'Checking for existing groups...';
-    });
-
-    // 1. Check if user is already in a group
-    final existingGroup = await _findUserGroup(user.uid);
-    if (existingGroup != null) {
-      _navigateToGroup(existingGroup.id);
-      return;
-    }
-
-    // 2. If not, start listening for new groups and trigger the function
-    _listenForGroup(user.uid);
-
-    try {
-      setState(() {
-        _statusText = 'No groups found. Let\'s make one for you!\nThis might take a moment...';
-      });
-      
-      await FirebaseFunctions.instance.httpsCallable('createGroups').call();
-
-      // Add a timeout for the listener in case something goes wrong.
-      Future.delayed(const Duration(seconds: 45), () {
-        if (mounted && _isMatching) {
-          setState(() {
-            _statusText = "The kitchen seems busy! It's taking longer than usual to find a match. Please hang tight or try again in a bit.";
-          });
-        }
-      });
-
-    } on FirebaseFunctionsException catch (e) {
-      if (mounted) {
-        setState(() {
-          _isMatching = false;
-          _statusText = "Something went wrong on our end!\nError: ${e.message}";
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isMatching = false;
-          _statusText = "An unexpected error occurred. Please try again.";
-        });
-      }
-    }
-  }
-
-  Future<DocumentSnapshot?> _findUserGroup(String userId) async {
-    final snapshot = await FirebaseFirestore.instance
-        .collection('groups')
-        .where('user_ids', arrayContains: userId)
-        .limit(1)
-        .get();
-
-    if (snapshot.docs.isNotEmpty) {
-      return snapshot.docs.first;
-    }
-    return null;
-  }
-
-  void _listenForGroup(String userId) {
-    _groupSubscription = FirebaseFirestore.instance
-        .collection('groups')
-        .where('user_ids', arrayContains: userId)
+    _userSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
         .snapshots()
-        .listen((snapshot) {
-      if (snapshot.docs.isNotEmpty) {
-        final groupDoc = snapshot.docs.first;
-        _navigateToGroup(groupDoc.id);
+        .listen((userDoc) {
+      if (userDoc.exists && mounted) {
+        final userData = userDoc.data() as Map<String, dynamic>;
+        final groupId = userData['groupId'] as String?;
+        final matchingStatus = userData['matching_status'] as String?;
+
+        if (groupId != null && groupId.isNotEmpty) {
+          _userSubscription?.cancel();
+          context.go('/my-group/$groupId');
+        } else if (matchingStatus == 'no_mates_available') {
+            setState(() {
+              _statusText = "Sorry, there aren't enough bitemates in your area to form a group yet. We are expanding and will notify you soon!";
+            });
+        }
       }
     });
-  }
-
-  void _navigateToGroup(String groupId) {
-    if (mounted) {
-      _groupSubscription?.cancel(); // Stop listening
-      setState(() {
-        _isMatching = false;
-      });
-      context.go('/my-group');
-    }
   }
 
   @override
@@ -134,7 +85,7 @@ class _MatchingScreenState extends State<MatchingScreen> with TickerProviderStat
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Lottie.asset(
-              'assets/animations/Food.json',
+              'assets/animations/searching_for_profile.json',
               controller: _animationController,
               onLoaded: (composition) {
                 _animationController
@@ -147,7 +98,7 @@ class _MatchingScreenState extends State<MatchingScreen> with TickerProviderStat
             ),
             const SizedBox(height: 30),
             Text(
-              _isMatching ? 'Matching in Progress' : 'Match Found!',
+              'Finding Your Bitemates',
               style: GoogleFonts.poppins(
                 fontSize: 26,
                 fontWeight: FontWeight.bold,
@@ -165,7 +116,7 @@ class _MatchingScreenState extends State<MatchingScreen> with TickerProviderStat
                   color: Colors.black54,
                   height: 1.5,
                 ),
-              ),
+               ),
             ),
           ],
         ),

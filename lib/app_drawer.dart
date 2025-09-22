@@ -3,25 +3,28 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
-import 'package:stream_chat_flutter/stream_chat_flutter.dart' hide User;
-
-import 'services/chat_service.dart';
+import 'package:stream_chat_flutter/stream_chat_flutter.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
 
   Future<void> _signOut(BuildContext context) async {
     try {
-      final chatClient = Provider.of<StreamChatClient>(context, listen: false);
-      final chatService = ChatService(chatClient);
-      await chatService.disconnectUser();
+      // Disconnect from Stream Chat FIRST
+      await StreamChat.of(context).client.disconnectUser();
     } catch (e) {
-      // Log the error but don't block the sign-out process
-      print('Error disconnecting from Stream: $e');
+      // It's good practice to log this, but we don't want to block logout
+      debugPrint('Error disconnecting from Stream: $e');
     }
+    
+    // Then sign out from Firebase
     await FirebaseAuth.instance.signOut();
-    context.go('/login');
+
+    // Then navigate to the login screen
+    // It's important to check if the widget is still mounted in async gaps
+    if (context.mounted) {
+      context.go('/login');
+    }
   }
 
   @override
@@ -53,7 +56,7 @@ class AppDrawer extends StatelessWidget {
               style: GoogleFonts.poppins(),
             ),
             onTap: () {
-              context.pop(); // Close the drawer
+              Navigator.of(context).pop(); // Close the drawer
               context.go('/edit-profile');
             },
           ),

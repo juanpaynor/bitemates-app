@@ -1,133 +1,42 @@
-
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:go_router/go_router.dart';
-import 'package:myapp/splash_screen.dart';
-import 'package:provider/provider.dart';
-import 'package:lottie/lottie.dart';
-// Hide the Stream User class to avoid conflict with Firebase User
-import 'package:stream_chat_flutter/stream_chat_flutter.dart' hide User;
-// Import the Firebase User class explicitly
-import 'package:firebase_auth/firebase_auth.dart' show User;
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart' as fba;
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:stream_chat_flutter/stream_chat_flutter.dart';
+import 'package:myapp/firebase_options.dart';
+import 'package:myapp/app_router.dart';
+import 'dart:developer' as developer;
 
-import 'additional_info_screen.dart';
-import 'bitemates_login_screen.dart';
-import 'chat_screen.dart';
-import 'home_screen.dart';
-import 'matching_screen.dart';
-import 'my_group_screen.dart';
-import 'quiz_intro_screen.dart';
-import 'quiz_question_screen.dart';
-import 'quiz_results_screen.dart';
-import 'quiz_state.dart';
-import 'edit_profile_screen.dart';
-
-import 'firebase_options.dart';
+import 'package:myapp/bitemates_login_screen.dart';
+import 'package:myapp/home_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  await precacheLottieAnimation();
-  
-  final client = StreamChatClient(
-    '4gk8q5z64nx5',
-    logLevel: Level.INFO,
-  );
 
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (context) => QuizState()),
-        Provider<StreamChatClient>(create: (context) => client),
-      ],
-      child: const MyApp(),
-    ),
-  );
+  final client = StreamChatClient('4gk8q5z64nx5');
+
+  runApp(MyApp(client: client));
 }
-
-Future<void> precacheLottieAnimation() async {
-  final assetData = await rootBundle.load('assets/animations/Hello.json');
-  await LottieComposition.fromByteData(assetData);
-}
-
-final _router = GoRouter(
-  initialLocation: '/splash',
-  routes: [
-    GoRoute(
-      path: '/splash',
-      builder: (context, state) => const SplashScreen(),
-    ),
-    GoRoute(
-      path: '/',
-      builder: (context, state) => const AuthWrapper(),
-    ),
-    GoRoute(
-      path: '/login',
-      builder: (context, state) => const BitematesLoginScreen(),
-    ),
-    GoRoute(
-      path: '/additional-info',
-      builder: (context, state) => const AdditionalInfoScreen(),
-    ),
-    GoRoute(
-      path: '/quiz',
-      builder: (context, state) => const QuizIntroScreen(),
-    ),
-    GoRoute(
-      path: '/quiz/question',
-      builder: (context, state) => const QuizQuestionScreen(),
-    ),
-    GoRoute(
-      path: '/quiz/results',
-      builder: (context, state) => const QuizResultsScreen(),
-    ),
-    GoRoute(
-      path: '/home',
-      builder: (context, state) => const HomeScreen(),
-    ),
-    GoRoute(
-      path: '/matching',
-      builder: (context, state) => const MatchingScreen(),
-    ),
-    GoRoute(
-      path: '/edit-profile',
-      builder: (context, state) => const EditProfileScreen(),
-    ),
-    GoRoute(
-      path: '/my-group',
-      builder: (context, state) => const MyGroupScreen(),
-    ),
-    GoRoute(
-      path: '/chat/:channelId',
-      builder: (context, state) {
-        final channelId = state.pathParameters['channelId']!;
-        return ChatScreen(channelId: channelId);
-      },
-    ),
-  ],
-);
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, required this.client});
+  final StreamChatClient client;
 
   @override
   Widget build(BuildContext context) {
+    // The MaterialApp.router MUST be the root widget.
     return MaterialApp.router(
-      routerConfig: _router,
-      title: 'Bitemates App',
-      theme: ThemeData(
-        primarySwatch: Colors.deepOrange,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
-      ),
+      routerConfig: appRouter,
+      debugShowCheckedModeBanner: false,
+      // The builder ensures StreamChat is a child of MaterialApp,
+      // giving it the required Localizations context.
       builder: (context, child) {
-        // The StreamChat widget needs to be available in the widget tree
         return StreamChat(
-          client: Provider.of<StreamChatClient>(context),
+          client: client,
           child: child!,
         );
       },
@@ -135,50 +44,57 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class AuthWrapper extends StatelessWidget {
+class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
   @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  Future<void> _connectStreamUser(fba.User user) async {
+    final client = StreamChat.of(context).client;
+    if (client.state.currentUser != null && client.state.currentUser?.id == user.uid) {
+      developer.log('User ${user.uid} is already connected to Stream.', name: 'com.bitemates.stream');
+      return;
+    }
+
+    try {
+      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('getStreamUserToken');
+      final result = await callable.call();
+      final token = result.data['token'];
+
+      await client.connectUser(
+        User(id: user.uid),
+        token,
+      );
+      developer.log('User successfully connected to Stream.', name: 'com.bitemates.stream');
+    } catch (e) {
+      developer.log('Error connecting to Stream: $e', name: 'com.bitemates.stream.error');
+      if(mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not connect to chat. Please try again later.')),
+        );
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, authSnapshot) {
-        if (authSnapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+    return StreamBuilder<fba.User?>(
+      stream: fba.FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
-        if (authSnapshot.hasData) {
-          // User is logged in, check Firestore for quiz completion
-          return FutureBuilder<DocumentSnapshot>(
-            future: FirebaseFirestore.instance.collection('users').doc(authSnapshot.data!.uid).get(),
-            builder: (context, userDocSnapshot) {
-              if (userDocSnapshot.connectionState == ConnectionState.waiting) {
-                return const Scaffold(
-                  body: Center(child: CircularProgressIndicator()),
-                );
-              }
-
-              if (userDocSnapshot.hasData && userDocSnapshot.data!.exists) {
-                final userData = userDocSnapshot.data!.data() as Map<String, dynamic>;
-                final additionalInfoCompleted = userData['additional_info_completed'] ?? false;
-                final quizCompleted = userData['quiz_completed'] ?? false;
-                
-                if (!additionalInfoCompleted) {
-                  return const AdditionalInfoScreen();
-                } else if (!quizCompleted) {
-                  return const QuizIntroScreen();
-                } else {
-                  return const HomeScreen();
-                }
-              }
-              // If user document doesn't exist, treat as if additional info is not completed.
-              return const AdditionalInfoScreen();
-            },
-          );
+        final user = snapshot.data;
+        if (user != null) {
+          _connectStreamUser(user);
+          return const HomeScreen();
         } else {
-          // User is not logged in
+          // It's important to disconnect the user from Stream when they log out.
+          StreamChat.of(context).client.disconnectUser();
           return const BitematesLoginScreen();
         }
       },

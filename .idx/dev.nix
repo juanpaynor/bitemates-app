@@ -20,6 +20,10 @@
       # Runs when a workspace is first created with this `dev.nix` file
       onCreate = { };
       # To run something each time the workspace is (re)started, use the `onStart` hook
+      onStart = {
+        # Clean Flutter project on start to save space
+        clean-flutter = "flutter clean";
+      };
     };
     # Enable previews and customize configuration
     previews = {

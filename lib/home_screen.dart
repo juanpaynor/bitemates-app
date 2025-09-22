@@ -8,6 +8,7 @@ import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:myapp/app_drawer.dart';
 import 'dart:developer' as developer;
+import 'package:cloud_functions/cloud_functions.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -26,6 +27,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
+  List<Map<String, dynamic>> _groupMembers = [];
+  String? _groupId;
 
   final Map<String, String> _locations = {
     'Muntinlupa/Alabang': 'southies',
@@ -82,6 +85,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
 
     await _loadUserData();
+    await _fetchUserGroup();
+
     if (mounted) {
       setState(() {
         _isLoading = false;
@@ -90,12 +95,100 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       _checkAndPromptForLocation();
     }
   }
+  
+  Future<void> _refreshGroupData() async {
+    // Show a loading indicator while refetching
+    setState(() {
+      _isLoading = true;
+    });
+
+    await _fetchUserGroup();
+    
+    // Hide loading indicator
+    setState(() {
+      _isLoading = false;
+    });
+  }
+
 
   Future<void> _loadUserData() async {
     if (_user != null) {
       _userDoc = await _firestore.collection('users').doc(_user!.uid).get();
     }
   }
+  
+  Future<void> _leaveGroup() async {
+    if (_groupId == null) return;
+
+    try {
+      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('leaveGroup');
+      await callable.call({'groupId': _groupId});
+
+      // Clear local group data and refresh UI
+      setState(() {
+        _groupMembers = [];
+        _groupId = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You have left the group.'), backgroundColor: Colors.green),
+      );
+      
+      _refreshGroupData();
+
+
+    } on FirebaseFunctionsException catch (e) {
+      developer.log('Error leaving group: ${e.message}', name: 'com.bitemates.error');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error leaving group: ${e.message}'), backgroundColor: Colors.red),
+      );
+    } catch (e) {
+      developer.log('Unexpected error leaving group: $e', name: 'com.bitemates.error');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('An unexpected error occurred.'), backgroundColor: Colors.red),
+      );
+    }
+}
+
+
+  Future<void> _fetchUserGroup() async {
+    if (_user == null) return;
+
+    try {
+      final userDoc = await _firestore.collection('users').doc(_user!.uid).get();
+      final userGroupId = userDoc.data()?['groupId'];
+
+      if (userGroupId != null) {
+        final groupDoc = await _firestore.collection('groups').doc(userGroupId).get();
+
+        if (groupDoc.exists) {
+          _groupId = groupDoc.id;
+          final userIds = List<String>.from(groupDoc.data()?['user_ids'] ?? []);
+
+          if (userIds.isNotEmpty) {
+            final usersSnapshot = await _firestore
+                .collection('users')
+                .where(FieldPath.documentId, whereIn: userIds)
+                .get();
+            _groupMembers = usersSnapshot.docs.map((doc) => doc.data()).toList();
+          } else {
+            _groupMembers = [];
+          }
+        } else {
+             _groupId = null;
+            _groupMembers = [];
+        }
+      } else {
+        _groupId = null;
+        _groupMembers = [];
+      }
+    } catch (e) {
+      developer.log('Error fetching user group: $e', name: 'com.bitemates.error');
+       _groupId = null;
+      _groupMembers = [];
+    }
+  }
+
 
   Future<void> _checkAndPromptForLocation() async {
     if (_userDoc == null || !_userDoc!.exists) return;
@@ -222,7 +315,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildFindGroupButton() {
-    // ... same as before
     return FadeTransition(
       opacity: _fadeAnimation,
       child: SlideTransition(
@@ -231,18 +323,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           onPressed: () {
             context.go('/matching');
           },
-          icon: const Icon(Icons.search, size: 28),
+          icon: const Icon(Icons.search, size: 22),
           label: Text(
-            'Find Your Group',
+            'Find your bitemates',
             style: GoogleFonts.poppins(
-              fontSize: 22,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
           ),
           style: ElevatedButton.styleFrom(
             foregroundColor: Colors.white,
             backgroundColor: const Color(0xFFDE6A4D),
-            padding: const EdgeInsets.symmetric(vertical: 20),
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(30),
             ),
@@ -255,17 +347,52 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildCurrentGroupSection() {
-    // ... same as before
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Recent Group 🍕',
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: const Color(0xFF4E3D35),
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Recent Group 🍕',
+              style: GoogleFonts.poppins(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF4E3D35),
+              ),
+            ),
+            if (_groupId != null)
+              IconButton(
+                icon: const Icon(Icons.exit_to_app, color: Colors.redAccent),
+                tooltip: 'Leave Group',
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (BuildContext context) {
+                      return AlertDialog(
+                        title: const Text('Leave Group'),
+                        content: const Text('Are you sure you want to leave this group?'),
+                        actions: [
+                          TextButton(
+                            child: const Text('Cancel'),
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                            },
+                          ),
+                          TextButton(
+                            child: const Text('Leave'),
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                              _leaveGroup();
+                            },
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
+          ],
         ),
         const SizedBox(height: 15),
         Container(
@@ -284,18 +411,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
           child: Column(
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _buildAvatar('https://i.pravatar.cc/150?img=1', 'Alice'),
-                  _buildAvatar('https://i.pravatar.cc/150?img=2', 'Bob'),
-                  _buildAvatar('https://i.pravatar.cc/150?img=3', 'Charlie'),
-                  _buildAvatar('https://i.pravatar.cc/150?img=4', 'Diana'),
-                ],
-              ),
+              _groupMembers.isEmpty
+                  ? const Text("You are not in a group yet.")
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: _groupMembers.map((member) => _buildAvatar(member)).toList(),
+                    ),
               const SizedBox(height: 20),
               ElevatedButton(
-                onPressed: () => context.go('/my-group'),
+                onPressed: _groupId == null
+                    ? null
+                    : () => context.go('/my-group/$_groupId'),
                 style: ElevatedButton.styleFrom(
                   foregroundColor: const Color(0xFFDE6A4D),
                   backgroundColor: const Color(0xFFFDF8F3),
@@ -317,22 +443,26 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildAvatar(String imageUrl, String name) {
-    // ... same as before
+  Widget _buildAvatar(Map<String, dynamic> userData) {
+    final imageUrl = userData['profile_picture_url'];
+    final name = userData['name'] ?? 'No Name';
+
     return Column(
       children: [
         CircleAvatar(
           radius: 30,
           backgroundColor: Colors.grey[200],
-          child: CachedNetworkImage(
-            imageUrl: imageUrl,
-            imageBuilder: (context, imageProvider) => CircleAvatar(
-              radius: 30,
-              backgroundImage: imageProvider,
-            ),
-            placeholder: (context, url) => const CircularProgressIndicator(),
-            errorWidget: (context, url, error) => const Icon(Icons.person, size: 30),
-          ),
+          child: imageUrl != null
+              ? CachedNetworkImage(
+                  imageUrl: imageUrl,
+                  imageBuilder: (context, imageProvider) => CircleAvatar(
+                    radius: 30,
+                    backgroundImage: imageProvider,
+                  ),
+                  placeholder: (context, url) => const CircularProgressIndicator(),
+                  errorWidget: (context, url, error) => const Icon(Icons.person, size: 30),
+                )
+              : const Icon(Icons.person, size: 30),
         ),
         const SizedBox(height: 5),
         Text(
@@ -341,13 +471,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             fontSize: 12,
             color: Colors.grey[600],
           ),
+          textAlign: TextAlign.center,
         ),
       ],
     );
   }
 
   Widget _buildBottomTabs() {
-    // ... same as before
     return Column(
       children: [
         _buildTabCard(
@@ -375,7 +505,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     required Color color,
     VoidCallback? onTap,
   }) {
-    // ... same as before
     return GestureDetector(
       onTap: onTap,
       child: Container(
