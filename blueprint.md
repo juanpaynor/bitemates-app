@@ -1,61 +1,42 @@
-# BiteMates App Blueprint
+# Project Blueprint
 
 ## Overview
 
-BiteMates is a social application designed to connect users with similar food preferences. It facilitates finding dining partners and forming groups for shared meals. The app includes features like a food preference quiz, user matching, group chat, and profile customization.
+This document outlines the features, design, and architecture of the BiteMates Flutter application. It serves as a single source of truth for the project's current state.
 
-## Implemented Features
+## Features
 
-*   **Authentication:** User login and signup screens.
-*   **Onboarding:** A multi-step quiz to capture user's food preferences, dietary restrictions, and eating habits.
-*   **User Matching:** A matching screen that displays potential dining partners based on quiz results.
-*   **Group Formation:** Users can form groups with their matches.
-*   **Group Chat:** A chat interface for communication within a group.
-*   **Profile Management:** Users can view and edit their profile information.
-*   **Settings:** A settings screen for application-level configurations.
-*   **Navigation:** A drawer-based navigation system to switch between different sections of the app.
+- **Authentication:** Users can sign up and log in using Firebase Authentication.
+- **Onboarding:** New users are guided through a multi-step onboarding process:
+  - **Additional Info:** Users provide their nickname and a profile photo.
+  - **Quiz:** Users answer a series of questions to determine their food preferences.
+- **Home Screen:** A personalized dashboard that welcomes the user.
+- **Navigation:** An updated app drawer provides access to:
+  - **Your Profile:** Navigates to a screen where users can edit their profile.
+  - **Report a Problem:** A placeholder for a user feedback system.
+  - **Sign Out:** Logs the user out of the application.
+- **Matching:** Users can initiate a matching process to find other users with similar tastes (UI placeholder).
+- **My Group:** A placeholder screen to display the user's group.
+- **Profile Editing:** A screen where users can update their profile information.
 
-## Current Plan: Codebase Analysis and Remediation
+## Design
 
-The following plan outlines the steps to address the issues identified by the `flutter analyze` command. The goal is to improve code quality, fix potential bugs, and ensure the long-term maintainability of the application.
+- **Theme:** The app uses a custom theme with a brand color of orange (`#xFFFF6B35`).
+- **Fonts:** The app uses the Poppins font from `google_fonts`.
+- **Layout:** The app uses a clean, modern layout with cards and clear calls to action.
 
-### 1. Fix Critical `use_build_context_synchronously` Warnings
+## Architecture
 
-This is the highest priority to prevent potential application crashes. I will add `mounted` checks before using `BuildContext` after an asynchronous operation in the following files:
+- **State Management:** The app uses the `provider` package for state management, with an `AuthNotifier` to manage the user's authentication and onboarding state.
+- **Routing:** The app uses the `go_router` package for declarative routing.
+- **Backend:** The app is powered by Firebase, using Firestore to store user data.
 
-*   `lib/bitemates_login_screen.dart`
-*   `lib/home_screen.dart`
-*   `lib/my_group_screen.dart`
-*   `lib/settings_screen.dart`
+## Current Task
 
-### 2. Replace Deprecated Code
+**Request:** The user wants to improve the app drawer with three buttons: "Your Profile", "Sign Out", and "Report a Problem".
 
-To ensure future compatibility and adhere to best practices, I will replace all deprecated members:
+**Plan:**
 
-*   **`withOpacity`:** Replace with `.withValues()` in:
-    *   `lib/additional_info_screen.dart`
-    *   `lib/edit_profile_screen.dart`
-*   **`TextFormField.value`:** Replace with `initialValue` in:
-    *   `lib/edit_profile_screen.dart`
-    *   `lib/home_screen.dart`
-
-### 3. Improve Error Handling and Logging
-
-I will enhance the application's logging and error handling mechanisms:
-
-*   **Replace `print` with `developer.log`:** For better debugging and to remove `avoid_print` warnings in:
-    *   `lib/bitemates_login_screen.dart`
-    *   `lib/services/chat_service.dart`
-*   **Use `rethrow` for exceptions:** To preserve the original stack trace in `lib/services/chat_service.dart`.
-
-### 4. Code Refactoring and Cleanup
-
-I will address the remaining warnings to improve code quality and readability:
-
-*   **Refactor `library_private_types_in_public_api`:** Fix the private type exposure in `lib/my_group_screen.dart`.
-*   **Remove Unused Code:**
-    *   Remove unused imports in `lib/additional_info_screen.dart` and `lib/user_service.dart`.
-    *   Remove the unused `brandOrange` variable in `lib/settings_screen.dart`.
-    *   Remove the unnecessary import in `lib/user_service.dart`.
-
-By following this plan, I will systematically improve the codebase, making it more robust, stable, and easier to maintain.
+1.  **DONE:** Modify `lib/app_drawer.dart` to include the three new buttons and their associated functionality.
+2.  **DONE:** Add a new route for `/edit-profile` in `lib/app_router.dart`.
+3.  **DONE:** Update this `blueprint.md` file to reflect the changes.

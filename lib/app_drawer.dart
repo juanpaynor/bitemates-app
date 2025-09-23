@@ -1,75 +1,91 @@
-
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:stream_chat_flutter/stream_chat_flutter.dart';
+import 'package:provider/provider.dart';
+import 'package:myapp/auth_notifier.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
 
-  Future<void> _signOut(BuildContext context) async {
-    try {
-      // Disconnect from Stream Chat FIRST
-      await StreamChat.of(context).client.disconnectUser();
-    } catch (e) {
-      // It's good practice to log this, but we don't want to block logout
-      debugPrint('Error disconnecting from Stream: $e');
-    }
-    
-    // Then sign out from Firebase
-    await FirebaseAuth.instance.signOut();
-
-    // Then navigate to the login screen
-    // It's important to check if the widget is still mounted in async gaps
-    if (context.mounted) {
-      context.go('/login');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final Color brandOrange = const Color(0xFFFF6B35);
-    final Color brandBlack = const Color(0xFF2B2B2B);
+    final Color slightlyLighterOrange = const Color(0xFFFF8A5C);
 
     return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: <Widget>[
-          DrawerHeader(
-            decoration: BoxDecoration(
-              color: brandOrange,
-            ),
-            child: Text(
-              'Settings',
-              style: GoogleFonts.poppins(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
+      child: Container(
+        color: const Color(0xFF1A1A1A),
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: <Widget>[
+            DrawerHeader(
+              decoration: BoxDecoration(
+                color: brandOrange,
+              ),
+              child: Text(
+                'BiteMates',
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
-          ),
-          ListTile(
-            leading: Icon(Icons.edit, color: brandBlack),
-            title: Text(
-              'Edit Profile',
-              style: GoogleFonts.poppins(),
+            _buildListTile(
+              icon: Icons.person_outline,
+              text: 'Your Profile',
+              onTap: () {
+                // Close the drawer first
+                Navigator.of(context).pop();
+                // Navigate to the profile screen
+                context.go('/edit-profile');
+              },
+              color: slightlyLighterOrange,
             ),
-            onTap: () {
-              Navigator.of(context).pop(); // Close the drawer
-              context.go('/edit-profile');
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.logout, color: brandBlack),
-            title: Text(
-              'Sign Out',
-              style: GoogleFonts.poppins(),
+            _buildListTile(
+              icon: Icons.report_problem_outlined,
+              text: 'Report a Problem',
+              onTap: () {
+                // Close the drawer
+                Navigator.of(context).pop();
+                // Show a snackbar
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Thank you for your report!'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              },
+              color: slightlyLighterOrange,
             ),
-            onTap: () => _signOut(context),
-          ),
-        ],
+            const Divider(color: Colors.grey),
+            _buildListTile(
+              icon: Icons.logout,
+              text: 'Sign Out',
+              onTap: () {
+                Provider.of<AuthNotifier>(context, listen: false).signOut();
+              },
+              color: Colors.redAccent,
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildListTile({
+    required IconData icon,
+    required String text,
+    required VoidCallback onTap,
+    required Color color,
+  }) {
+    return ListTile(
+      leading: Icon(icon, color: color),
+      title: Text(
+        text,
+        style: GoogleFonts.poppins(color: Colors.white, fontSize: 16),
+      ),
+      onTap: onTap,
     );
   }
 }

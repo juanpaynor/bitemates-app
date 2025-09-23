@@ -1,8 +1,8 @@
-
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import 'package:myapp/auth_notifier.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -33,9 +33,9 @@ class SettingsScreen extends StatelessWidget {
             context,
             icon: Icons.logout,
             title: 'Sign Out',
-            onTap: () async {
-              await FirebaseAuth.instance.signOut();
-              context.go('/login');
+            onTap: () {
+              Provider.of<AuthNotifier>(context, listen: false).signOut();
+              // No need to navigate here, the router's redirect will handle it.
             },
           ),
           _buildSectionHeader('Support'),

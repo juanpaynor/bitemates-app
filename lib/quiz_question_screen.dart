@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myapp/quiz_state.dart';
+import 'package:myapp/auth_notifier.dart';
 
 class QuizQuestionScreen extends StatelessWidget {
   const QuizQuestionScreen({super.key});
@@ -44,11 +45,16 @@ class QuizQuestionScreen extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 8.0),
                 child: ElevatedButton(
                   onPressed: () {
+                    // Record the answer
+                    quizState.nextQuestion(idx);
+
                     if (quizState.isLastQuestion) {
-                      quizState.nextQuestion(idx);
+                      // FIX: Call the correct method to update the quiz status
+                      Provider.of<AuthNotifier>(context, listen: false)
+                          .completeQuiz();
+
+                      // Navigate to the results screen
                       context.go('/quiz/results');
-                    } else {
-                      quizState.nextQuestion(idx);
                     }
                   },
                   style: ElevatedButton.styleFrom(

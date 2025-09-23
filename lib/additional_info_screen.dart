@@ -3,11 +3,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart'; // Added this line
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:lottie/lottie.dart';
+import 'package:myapp/auth_notifier.dart'; // Added this line
 
 class AdditionalInfoScreen extends StatefulWidget {
   const AdditionalInfoScreen({super.key});
@@ -134,7 +135,7 @@ class _AdditionalInfoScreenState extends State<AdditionalInfoScreen> with Single
         'bio': _bioController.text.trim(),
         'age': int.tryParse(_ageController.text.trim()) ?? 18,
         'email': user.email,
-        'profile_picture_url': profilePictureUrl, // Standardized field name
+        'photoUrl': profilePictureUrl, // Corrected field name
         'created_at': FieldValue.serverTimestamp(),
         'quiz_completed': false,
         'additional_info_completed': true,
@@ -152,7 +153,15 @@ class _AdditionalInfoScreenState extends State<AdditionalInfoScreen> with Single
           .doc(user.uid)
           .set(userData, SetOptions(merge: true));
 
-      if (mounted) context.go('/quiz');
+      if (mounted) {
+        // This is the crucial change. Instead of navigating directly...
+        // context.go('/quiz');
+
+        // ...we notify the AuthNotifier to refresh its state.
+        // The router will then see the new state and redirect automatically.
+        final authNotifier = Provider.of<AuthNotifier>(context, listen: false);
+        await authNotifier.refreshOnboardingStatus();
+      }
 
     } catch (e, s) {
       debugPrint('####### SAVE USER INFO ERROR #######');

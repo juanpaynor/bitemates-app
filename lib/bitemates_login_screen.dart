@@ -1,14 +1,10 @@
+
 import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myapp/bitemates_signup_screen.dart';
-import 'package:provider/provider.dart';
-import 'package:stream_chat_flutter/stream_chat_flutter.dart' hide User;
-
-import 'services/chat_service.dart';
 
 class BitematesLoginScreen extends StatefulWidget {
   const BitematesLoginScreen({super.key});
@@ -30,72 +26,9 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen>
   final Color brandBlack = const Color(0xFF2B2B2B);
   final Color brandBackground = const Color(0xFFF8F6EF);
 
-  Future<void> _handleLoginSuccess() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null || !mounted) return;
-
-    try {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-
-      if (!mounted) return; // Re-check mounted status after await
-
-      String nickname = 'No Nickname';
-      String photoUrl = '';
-
-      if (userDoc.exists) {
-        final data = userDoc.data() as Map<String, dynamic>;
-        final nicknameData = data['nickname'];
-        if (nicknameData is String) {
-          nickname = nicknameData;
-        }
-        final photoUrlData = data['photoUrl'];
-        if (photoUrlData is String) {
-          photoUrl = photoUrlData;
-        }
-      }
-
-      // --- Connect to Stream Chat in the background ---
-      final chatClient = Provider.of<StreamChatClient>(context, listen: false);
-      final chatService = ChatService(chatClient);
-      // No 'await' here. Let it run without blocking the UI.
-      chatService.connectUser(user, nickname, photoUrl).catchError((e) {
-        developer.log("Background Stream connection failed: $e");
-      });
-      // --- End background connection ---
-
-      // Navigate immediately based on user data
-      if (!mounted) return;
-      if (userDoc.exists) {
-        final userData = userDoc.data()!;
-        final additionalInfoCompleted =
-            userData['additional_info_completed'] ?? false;
-        final quizCompleted = userData['quiz_completed'] ?? false;
-
-        if (!additionalInfoCompleted) {
-          context.go('/additional-info');
-        } else if (!quizCompleted) {
-          context.go('/quiz');
-        } else {
-          context.go('/home');
-        }
-      } else {
-        context.go('/additional-info');
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error during login process: $e')),
-      );
-      await FirebaseAuth.instance.signOut();
-      if (!mounted) return;
-      context.go('/login');
-    }
-  }
-
   Future<void> _login() async {
+    // No longer trying to handle navigation or chat connection here.
+    // The AuthNotifier and GoRouter will handle all of that.
     setState(() {
       _isLoading = true;
     });
@@ -104,8 +37,7 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen>
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
-      if (!mounted) return;
-      await _handleLoginSuccess();
+      // Auth state change will be picked up by the notifier, no need for more code here.
     } on FirebaseAuthException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -195,12 +127,8 @@ class _BitematesLoginScreenState extends State<BitematesLoginScreen>
                       ),
                       GestureDetector(
                         onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) =>
-                                    const BitematesSignupScreen()),
-                          );
+                          // Using go_router for navigation to keep it consistent
+                          context.go('/signup');
                         },
                         child: Text(
                           'Sign Up',

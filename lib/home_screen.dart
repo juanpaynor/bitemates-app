@@ -1,623 +1,198 @@
-
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import 'package:myapp/auth_notifier.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:myapp/app_drawer.dart';
-import 'dart:developer' as developer;
-import 'package:cloud_functions/cloud_functions.dart';
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  User? _user;
-  DocumentSnapshot? _userDoc;
-  bool _isLoading = true;
-  late AnimationController _animationController;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
-  List<Map<String, dynamic>> _groupMembers = [];
-  String? _groupId;
-
-  final Map<String, String> _locations = {
-    'Muntinlupa/Alabang': 'southies',
-    'Las Pinas': 'southies',
-    'Paranaque': 'southies',
-    'Pasay': 'middle',
-    'Makati': 'middle',
-    'Manila': 'middle',
-    'Taguig': 'middle',
-    'Mandaluyong': 'middle',
-    'Pasig': 'middle',
-    'San Juan': 'middle',
-    'Quezon City': 'northies',
-    'Marikina': 'northies',
-    'South Caloocan': 'northies',
-    'Navotas': 'northies',
-    'Malabon': 'northies',
-    'Valenzuela': 'northies',
-    'North Caloocan': 'northies',
-  };
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
-
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
-    );
-
-    _slideAnimation = Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
-    );
-
-    _initialize();
-  }
-
-  Future<void> _initialize() async {
-    _user = _auth.currentUser;
-
-    if (_user == null) {
-      await Future.delayed(const Duration(milliseconds: 500));
-      _user = _auth.currentUser;
-      if (_user == null) {
-        if (mounted) {
-          developer.log('Error: HomeScreen accessed without a logged-in user.', name: 'com.bitemates.auth');
-          setState(() => _isLoading = false);
-        }
-        return;
-      }
-    }
-
-    await _loadUserData();
-    await _fetchUserGroup();
-
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
-      _animationController.forward();
-      _checkAndPromptForLocation();
-    }
-  }
-  
-  Future<void> _refreshGroupData() async {
-    // Show a loading indicator while refetching
-    setState(() {
-      _isLoading = true;
-    });
-
-    await _fetchUserGroup();
-    
-    // Hide loading indicator
-    setState(() {
-      _isLoading = false;
-    });
-  }
-
-
-  Future<void> _loadUserData() async {
-    if (_user != null) {
-      _userDoc = await _firestore.collection('users').doc(_user!.uid).get();
-    }
-  }
-  
-  Future<void> _leaveGroup() async {
-    if (_groupId == null) return;
-
-    try {
-      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('leaveGroup');
-      await callable.call({'groupId': _groupId});
-
-      // Clear local group data and refresh UI
-      setState(() {
-        _groupMembers = [];
-        _groupId = null;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('You have left the group.'), backgroundColor: Colors.green),
-        );
-      }
-      
-      _refreshGroupData();
-
-
-    } on FirebaseFunctionsException catch (e) {
-      developer.log('Error leaving group: ${e.message}', name: 'com.bitemates.error');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error leaving group: ${e.message}'), backgroundColor: Colors.red),
-        );
-      }
-    } catch (e) {
-      developer.log('Unexpected error leaving group: $e', name: 'com.bitemates.error');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('An unexpected error occurred.'), backgroundColor: Colors.red),
-        );
-      }
-    }
-}
-
-
-  Future<void> _fetchUserGroup() async {
-    if (_user == null) return;
-
-    try {
-      final userDoc = await _firestore.collection('users').doc(_user!.uid).get();
-      final userGroupId = userDoc.data()?['groupId'];
-
-      if (userGroupId != null) {
-        final groupDoc = await _firestore.collection('groups').doc(userGroupId).get();
-
-        if (groupDoc.exists) {
-          _groupId = groupDoc.id;
-          final userIds = List<String>.from(groupDoc.data()?['user_ids'] ?? []);
-
-          if (userIds.isNotEmpty) {
-            final usersSnapshot = await _firestore
-                .collection('users')
-                .where(FieldPath.documentId, whereIn: userIds)
-                .get();
-            _groupMembers = usersSnapshot.docs.map((doc) => doc.data()).toList();
-          } else {
-            _groupMembers = [];
-          }
-        } else {
-             _groupId = null;
-            _groupMembers = [];
-        }
-      } else {
-        _groupId = null;
-        _groupMembers = [];
-      }
-    } catch (e) {
-      developer.log('Error fetching user group: $e', name: 'com.bitemates.error');
-       _groupId = null;
-      _groupMembers = [];
-    }
-  }
-
-
-  Future<void> _checkAndPromptForLocation() async {
-    if (_userDoc == null || !_userDoc!.exists) return;
-
-    final data = _userDoc!.data() as Map<String, dynamic>?;
-    if (data == null || data['sector'] == null || data['sector'] == '') {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if(mounted) {
-          _showLocationPrompt();
-        }
-      });
-    }
-  }
-
-  void _showLocationPrompt() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return _LocationSelectionDialog(
-          locations: _locations,
-          onSave: (selectedLocation, selectedSector) async {
-            if (_user != null) {
-              await _firestore.collection('users').doc(_user!.uid).update({
-                'location': selectedLocation,
-                'sector': selectedSector,
-              });
-              await _loadUserData();
-              setState(() {});
-              if (mounted) {
-                Navigator.of(context).pop();
-              }
-            }
-          },
-        );
-      },
-    );
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
+  final Color brandOrange = const Color(0xFFFF6B35);
+  final Color brandBlack = const Color(0xFF2B2B2B);
+  final Color brandBackground = const Color(0xFFF8F6EF);
 
   @override
   Widget build(BuildContext context) {
+    final authNotifier = Provider.of<AuthNotifier>(context);
+
+    final String? nickname = authNotifier.nickname;
+    final String? photoUrl = authNotifier.photoUrl;
+
     return Scaffold(
-      backgroundColor: const Color.fromRGBO(253, 248, 243, 1),
+      backgroundColor: brandBackground,
       appBar: AppBar(
-        title: Text(
-          'Bitemates',
-          style: GoogleFonts.pacifico(
-            fontSize: 28,
-            color: const Color(0xFFDE6A4D),
-          ),
-        ),
-        centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
-        actions: [
-          Builder(
-            builder: (context) => IconButton(
-              icon: const Icon(Icons.menu, color: Color(0xFFDE6A4D)),
-              onPressed: () => Scaffold.of(context).openDrawer(),
-              tooltip: 'Open settings',
-            ),
+        title: Text(
+          'Dashboard',
+          style: GoogleFonts.poppins(
+            color: brandBlack,
+            fontWeight: FontWeight.bold,
+            fontSize: 24,
           ),
-        ],
+        ),
+        iconTheme: IconThemeData(color: brandBlack), // Ensures the drawer icon is visible
       ),
-      drawer: const AppDrawer(),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFFDE6A4D)))
-          : _user == null
-              ? _buildErrorState()
-              : _buildHomeScreenContent(),
-    );
-  }
-
-  Widget _buildErrorState() {
-    return Center(
-      child: Padding(
+      drawer: const AppDrawer(), // Add the AppDrawer here
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.error_outline, color: Colors.red, size: 60),
-            const SizedBox(height: 20),
-            const Text('Authentication Error', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-            const SizedBox(height: 10),
-            const Text('Could not verify user session. Please try logging in again.', textAlign: TextAlign.center),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () => context.go('/login'),
-              child: const Text('Go to Login'),
-            )
+            _buildProfileCard(nickname, photoUrl),
+            const SizedBox(height: 40),
+            _buildFindGroupCard(context),
+            const SizedBox(height: 40),
+            _buildHistorySection(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildHomeScreenContent() {
-    return SafeArea(
-      child: AnimationLimiter(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: AnimationConfiguration.toStaggeredList(
-              duration: const Duration(milliseconds: 375),
-              childAnimationBuilder: (widget) => SlideAnimation(
-                verticalOffset: 50.0,
-                child: FadeInAnimation(child: widget),
-              ),
+  Widget _buildProfileCard(String? nickname, String? photoUrl) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 35,
+            backgroundColor: brandOrange.withOpacity(0.2),
+            backgroundImage: photoUrl != null && photoUrl.isNotEmpty
+                ? NetworkImage(photoUrl)
+                : null,
+            child: photoUrl == null || photoUrl.isEmpty
+                ? const Icon(Icons.person, size: 40, color: Color(0xFFFF6B35),)
+                : null,
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildFindGroupButton(),
-                const SizedBox(height: 30),
-                _buildCurrentGroupSection(),
-                const SizedBox(height: 30),
-                _buildBottomTabs(),
+                Text(
+                  'Welcome back,',
+                  style: GoogleFonts.poppins(
+                    color: brandBlack.withOpacity(0.7),
+                    fontSize: 16,
+                  ),
+                ),
+                Text(
+                  nickname ?? 'Bitemate',
+                  style: GoogleFonts.poppins(
+                    color: brandBlack,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFindGroupCard(BuildContext context) {
+    return InkWell(
+      onTap: () => context.go('/matching'),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [brandOrange, brandOrange.withOpacity(0.8)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: brandOrange.withOpacity(0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.group_add, color: Colors.white, size: 40),
+            const SizedBox(height: 15),
+            Text(
+              'Find Your Bitemates',
+              style: GoogleFonts.poppins(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'Start the matching process and meet your new foodie friends.',
+              style: GoogleFonts.poppins(
+                color: Colors.white.withOpacity(0.9),
+                fontSize: 14,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildFindGroupButton() {
-    return FadeTransition(
-      opacity: _fadeAnimation,
-      child: SlideTransition(
-        position: _slideAnimation,
-        child: ElevatedButton.icon(
-          onPressed: () {
-            // The matching screen will call the function, so we just navigate.
-            context.go('/matching');
-          },
-          icon: const Icon(Icons.search, size: 22),
-          label: Text(
-            'Find your bitemates',
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          style: ElevatedButton.styleFrom(
-            foregroundColor: Colors.white,
-            backgroundColor: const Color(0xFFDE6A4D),
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30),
-            ),
-            elevation: 8,
-            shadowColor: const Color(0xFFDE6A4D).withAlpha(102),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCurrentGroupSection() {
+  Widget _buildHistorySection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Recent Group 🍕',
-              style: GoogleFonts.poppins(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF4E3D35),
-              ),
-            ),
-            if (_groupId != null)
-              IconButton(
-                icon: const Icon(Icons.exit_to_app, color: Colors.redAccent),
-                tooltip: 'Leave Group',
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (BuildContext context) {
-                      return AlertDialog(
-                        title: const Text('Leave Group'),
-                        content: const Text('Are you sure you want to leave this group?'),
-                        actions: [
-                          TextButton(
-                            child: const Text('Cancel'),
-                            onPressed: () {
-                              Navigator.of(context).pop();
-                            },
-                          ),
-                          TextButton(
-                            child: const Text('Leave'),
-                            onPressed: () {
-                              Navigator.of(context).pop();
-                              _leaveGroup();
-                            },
-                          ),
-                        ],
-                      );
-                    },
-                  );
-                },
-              ),
-          ],
+        Text(
+          'Recent Matches',
+          style: GoogleFonts.poppins(
+            color: brandBlack,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
         ),
-        const SizedBox(height: 15),
+        const SizedBox(height: 20),
         Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(25),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withAlpha(38),
-                spreadRadius: 2,
-                blurRadius: 10,
-                offset: const Offset(0, 5),
-              ),
-            ],
+            border: Border.all(color: Colors.grey.shade200),
           ),
-          child: Column(
-            children: [
-              _groupMembers.isEmpty
-                  ? const Text("You are not in a group yet.")
-                  : Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: _groupMembers.map((member) => _buildAvatar(member)).toList(),
-                    ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _groupId == null
-                    ? null
-                    : () => context.go('/my-group/$_groupId'),
-                style: ElevatedButton.styleFrom(
-                  foregroundColor: const Color(0xFFDE6A4D),
-                  backgroundColor: const Color(0xFFFDF8F3),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    side: const BorderSide(color: Color(0xFFDE6A4D), width: 1.5),
-                  ),
-                  elevation: 0,
+          child: Center(
+            child: Column(
+              children: [
+                Icon(
+                  Icons.history,
+                  color: Colors.grey.shade400,
+                  size: 50,
                 ),
-                child: Text(
-                  'Go to Chat',
-                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                const SizedBox(height: 15),
+                Text(
+                  'No match history yet',
+                  style: GoogleFonts.poppins(
+                    color: Colors.grey.shade600,
+                    fontSize: 16,
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAvatar(Map<String, dynamic> userData) {
-    final imageUrl = userData['profile_picture_url'];
-    final name = userData['name'] ?? 'No Name';
-
-    return Column(
-      children: [
-        CircleAvatar(
-          radius: 30,
-          backgroundColor: Colors.grey[200],
-          child: imageUrl != null
-              ? CachedNetworkImage(
-                  imageUrl: imageUrl,
-                  imageBuilder: (context, imageProvider) => CircleAvatar(
-                    radius: 30,
-                    backgroundImage: imageProvider,
-                  ),
-                  placeholder: (context, url) => const CircularProgressIndicator(),
-                  errorWidget: (context, url, error) => const Icon(Icons.person, size: 30),
-                )
-              : const Icon(Icons.person, size: 30),
-        ),
-        const SizedBox(height: 5),
-        Text(
-          name,
-          style: GoogleFonts.poppins(
-            fontSize: 12,
-            color: Colors.grey[600],
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBottomTabs() {
-    return Column(
-      children: [
-        _buildTabCard(
-          icon: Icons.celebration,
-          title: 'Explore Events',
-          subtitle: 'Community dinners, trivia nights & more',
-          color: const Color(0xFF5ABCB9),
-          onTap: () => context.go('/restaurants'),
-        ),
-        const SizedBox(height: 20),
-        _buildTabCard(
-          icon: Icons.people,
-          title: 'Connections',
-          subtitle: 'Your saved friends and contacts',
-          color: const Color(0xFFF09E54),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTabCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-    VoidCallback? onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(25),
-        decoration: BoxDecoration(
-          color: color.withAlpha(38),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Icon(icon, color: Colors.white, size: 30),
-            ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: color,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      color: color.withAlpha(204),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.arrow_forward_ios, color: color, size: 18),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _LocationSelectionDialog extends StatefulWidget {
-  final Map<String, String> locations;
-  final Function(String, String) onSave;
-
-  const _LocationSelectionDialog({required this.locations, required this.onSave});
-
-  @override
-  State<_LocationSelectionDialog> createState() => _LocationSelectionDialogState();
-}
-
-class _LocationSelectionDialogState extends State<_LocationSelectionDialog> {
-  String? _selectedLocation;
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text('Set Your Location', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('This helps us find the best bitemates near you.', style: GoogleFonts.poppins()),
-          const SizedBox(height: 20),
-          DropdownButtonFormField<String>(
-            value: _selectedLocation,
-            hint: const Text('Choose your city/area'),
-            isExpanded: true,
-            onChanged: (value) {
-              setState(() {
-                _selectedLocation = value;
-              });
-            },
-            items: widget.locations.keys.map<DropdownMenuItem<String>>((String value) {
-              return DropdownMenuItem<String>(
-                value: value,
-                child: Text(value),
-              );
-            }).toList(),
-            decoration: const InputDecoration(
-              border: OutlineInputBorder(),
-              contentPadding: EdgeInsets.symmetric(horizontal: 16),
+              ],
             ),
           ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: _selectedLocation == null ? null : () {
-            final selectedSector = widget.locations[_selectedLocation!]!;
-            widget.onSave(_selectedLocation!, selectedSector);
-          },
-          child: const Text('Save'),
         ),
       ],
     );

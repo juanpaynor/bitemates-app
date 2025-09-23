@@ -1,45 +1,51 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:provider/provider.dart';
-import 'package:stream_chat_flutter/stream_chat_flutter.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:myapp/auth_notifier.dart';
 import 'package:myapp/firebase_options.dart';
 import 'package:myapp/app_router.dart';
-import 'package:myapp/auth_notifier.dart';
+import 'package:myapp/quiz_state.dart';
+import 'package:myapp/theme_provider.dart';
+import 'package:provider/provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-
-  final client = StreamChatClient('4gk8q5z64nx5');
-
-  runApp(
-    ChangeNotifierProvider(
-      create: (context) => AuthNotifier(),
-      child: MyApp(client: client),
-    ),
+  await FirebaseAppCheck.instance.activate(
+    webProvider: ReCaptchaV3Provider('recaptcha-v3-site-key'),
+    androidProvider: AndroidProvider.debug,
   );
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key, required this.client});
-  final StreamChatClient client;
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      routerConfig: appRouter,
-      debugShowCheckedModeBanner: false,
-      builder: (context, child) {
-        return StreamChat(
-          client: client,
-          child: child!,
-        );
-      },
-      // The navigatorKey is crucial for the router's refreshListenable to work.
-      key: navigatorKey,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthNotifier()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => QuizState()),
+      ],
+      child: Builder(
+        builder: (context) {
+          final authNotifier = Provider.of<AuthNotifier>(context);
+          final appRouter = AppRouter(authNotifier);
+          final themeProvider = Provider.of<ThemeProvider>(context);
+
+          return MaterialApp.router(
+            title: 'BiteMates',
+            theme: themeProvider.lightTheme,
+            darkTheme: themeProvider.darkTheme,
+            themeMode: themeProvider.themeMode,
+            routerConfig: appRouter.router,
+          );
+        },
+      ),
     );
   }
 }
