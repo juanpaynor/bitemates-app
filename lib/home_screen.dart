@@ -43,6 +43,8 @@ class HomeScreen extends StatelessWidget {
             _buildProfileCard(nickname, photoUrl),
             const SizedBox(height: 40),
             _buildFindGroupCard(context),
+            const SizedBox(height: 20),
+            _buildChatCard(context), // Added chat card
             const SizedBox(height: 40),
             _buildHistorySection(),
           ],
@@ -143,6 +145,51 @@ class HomeScreen extends StatelessWidget {
             const SizedBox(height: 5),
             Text(
               'Start the matching process and meet your new foodie friends.',
+              style: GoogleFonts.poppins(
+                color: Colors.white.withOpacity(0.9),
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Added chat card widget
+  Widget _buildChatCard(BuildContext context) {
+    return InkWell(
+      onTap: () => context.go('/chat'),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
+        decoration: BoxDecoration(
+          color: const Color(0xFF4A90E2), // A nice blue for chat
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF4A90E2).withOpacity(0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.chat_bubble_outline, color: Colors.white, size: 40),
+            const SizedBox(height: 15),
+            Text(
+              'Go to Chat',
+              style: GoogleFonts.poppins(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'Talk with your Bitemates.',
               style: GoogleFonts.poppins(
                 color: Colors.white.withOpacity(0.9),
                 fontSize: 14,

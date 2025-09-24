@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myapp/auth_notifier.dart';
+import 'package:myapp/chat_screen.dart'; // Added import
 import 'package:myapp/home_screen.dart';
 import 'package:myapp/bitemates_login_screen.dart';
 import 'package:myapp/bitemates_signup_screen.dart';
@@ -72,6 +73,14 @@ class AppRouter {
             return MyGroupScreen(groupId: groupId);
           },
         ),
+        // Updated chat route to accept a groupId
+        GoRoute(
+          path: '/chat/:groupId',
+          builder: (context, state) {
+            final groupId = state.pathParameters['groupId']!;
+            return ChatScreen(groupId: groupId);
+          },
+        ),
       ],
       redirect: (BuildContext context, GoRouterState state) {
         final location = state.uri.toString();
@@ -91,6 +100,11 @@ class AppRouter {
         }
 
         if (authState == AuthState.authenticated) {
+          // Allow access to chat screen anytime after authentication
+          if (location.startsWith('/chat/')) {
+            return null;
+          }
+
           if (onboardingStatus == OnboardingStatus.needsAdditionalInfo) {
             return '/additional-info';
           }

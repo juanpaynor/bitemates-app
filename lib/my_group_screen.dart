@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class MyGroupScreen extends StatelessWidget {
@@ -55,9 +56,29 @@ class MyGroupScreen extends StatelessWidget {
                   color: brandBlack.withOpacity(0.7),
                 ),
               ),
-              const SizedBox(height: 30),
+              const SizedBox(height: 40),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.chat_bubble_outline),
+                label: const Text('Go to Chat'),
+                onPressed: () {
+                  // Navigate to the specific chat screen for this group
+                  context.go('/chat/$groupId');
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: brandOrange,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                  textStyle: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
               Text(
-                'This screen is a placeholder. Functionality for group chat and activities will be added here in the future.',
+                'This is your group hub. More activities and features will appear here.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.poppins(
                   fontSize: 14,

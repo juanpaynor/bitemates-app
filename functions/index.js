@@ -1,231 +1,173 @@
 const functions = require("firebase-functions");
-const admin = require("firebase-admin");
 const { StreamChat } = require("stream-chat");
+const admin = require("firebase-admin");
 
 admin.initializeApp();
+const db = admin.firestore();
 
-// --- Stream Chat Client Initialization ---
-const streamApiKey = functions.config().stream.api_key;
-const streamApiSecret = functions.config().stream.api_secret;
-let serverClient;
-
-function getStreamClient() {
-  if (!serverClient) {
-    if (streamApiKey && streamApiSecret) {
-      serverClient = StreamChat.getInstance(streamApiKey, streamApiSecret);
-    } else {
-      functions.logger.error("Stream API key or secret is not configured.");
+// This function remains for potential future direct messaging features.
+const getStreamToken = functions.runWith({ secrets: ["STREAM_API_KEY", "STREAM_API_SECRET"] }).https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
     }
-  }
-  return serverClient;
-}
-
-// --- Compatibility Calculation ---
-function calculateCompatibility(user1, user2) {
-    const p1 = user1.personality;
-    const p2 = user2.personality;
-    if (!p1 || !p2) return 0;
-
-    let score = 0;
-    const MAX_SCORE_PER_TRAIT = 10;
-
-    if (typeof p1.extraversion === 'number' && typeof p2.extraversion === 'number') {
-        const diff = Math.abs(p1.extraversion - p2.extraversion);
-        score += Math.max(0, MAX_SCORE_PER_TRAIT - (diff * 2));
+    try {
+        const apiKey = process.env.STREAM_API_KEY;
+        const apiSecret = process.env.STREAM_API_SECRET;
+        const serverClient = StreamChat.getInstance(apiKey, apiSecret);
+        const token = serverClient.createToken(context.auth.uid);
+        return { token: token };
+    } catch (error) {
+        console.error(`Error creating Stream token for user ${context.auth.uid}:`, error);
+        throw new functions.https.HttpsError("internal", "An error occurred while creating the Stream token.");
     }
-    if (typeof p1.openness === 'number' && typeof p2.openness === 'number') {
-        const diff = Math.abs(p1.openness - p2.openness);
-        score += Math.max(0, MAX_SCORE_PER_TRAIT - (diff * 2.5));
-    }
-    if (typeof p1.chill_factor === 'number' && typeof p2.chill_factor === 'number') {
-        const diff = Math.abs(p1.chill_factor - p2.chill_factor);
-        score += Math.max(0, MAX_SCORE_PER_TRAIT - (diff * 2.5));
-    }
-    if (p1.conversation_style && p1.conversation_style === p2.conversation_style) {
-        score += 15;
-    }
-    if (Array.isArray(p1.interests) && Array.isArray(p2.interests)) {
-        const commonInterests = p1.interests.filter(interest => p2.interests.includes(interest));
-        score += commonInterests.length * 10;
-    }
-    return Math.round(score);
-}
+});
 
-// --- Group Creation and Finalization ---
-async function finalizeGroup(db, streamClient, users, sector, matchTier) {
-    const userIds = users.map(u => u.uid);
-    const groupDocRef = db.collection("groups").doc();
-    const groupId = groupDocRef.id;
+// This function securely provides a token for a specific group chat after verifying membership.
+const getGroupChatToken = functions.runWith({ secrets: ["STREAM_API_KEY", "STREAM_API_SECRET"] }).https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
+    }
+    const userId = context.auth.uid;
+    const groupId = data.groupId;
+    if (!groupId) {
+        throw new functions.https.HttpsError("invalid-argument", "The function must be called with a 'groupId'.");
+    }
 
-    await groupDocRef.set({
-        created_at: admin.firestore.FieldValue.serverTimestamp(),
-        status: "active",
-        sector: sector,
-        user_ids: userIds,
-        channel_id: groupId,
-        match_tier: matchTier,
-    });
+    try {
+        const groupDoc = await db.collection("groups").doc(groupId).get();
+        if (!groupDoc.exists) {
+            throw new functions.https.HttpsError("not-found", "Group not found.");
+        }
+        const groupData = groupDoc.data();
+        const groupMembers = groupData.members || [];
+        if (!groupMembers.includes(userId)) {
+            throw new functions.https.HttpsError("permission-denied", "User is not a member of this group.");
+        }
 
-    const channel = streamClient.channel('messaging', groupId, {
-        name: `BiteMates Group in ${sector}`,
-        created_by_id: users[0].uid,
-        members: userIds,
-    });
-    await channel.create();
+        const apiKey = process.env.STREAM_API_KEY;
+        const apiSecret = process.env.STREAM_API_SECRET;
+        const serverClient = StreamChat.getInstance(apiKey, apiSecret);
 
-    const batch = db.batch();
-    userIds.forEach(userId => {
-        const userRef = db.collection("users").doc(userId);
-        batch.update(userRef, {
-            groupId: groupId,
-            matching_status: 'matched',
-            matching_started_at: admin.firestore.FieldValue.delete(), // Clean up timestamp
+        const channel = serverClient.channel("messaging", groupId, {
+            name: groupData.name || "Unnamed Group",
+            created_by_id: userId, 
+            members: groupMembers, 
         });
-    });
-    await batch.commit();
+        await channel.create();
 
-    functions.logger.info(`SUCCESS: Tier '${matchTier}' group ${groupId} created for sector ${sector}.`);
-    return { status: 'matched', groupId: groupId };
-}
+        const token = serverClient.createToken(userId);
 
-// --- Main Matching Function ---
-exports.createGroups = functions.runWith({ timeoutSeconds: 120 }).https.onCall(async (data, context) => {
+        return { token: token };
+
+    } catch (error) {
+        console.error(`Error processing group chat token for user ${userId} and group ${groupId}:`, error);
+        if (error instanceof functions.https.HttpsError) {
+            throw error; 
+        } 
+        throw new functions.https.HttpsError("internal", "An unexpected error occurred.");
+    }
+});
+
+
+// Hybrid matching function with ideal logic and a developer fallback.
+const createGroups = functions.https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
     }
 
-    const uid = context.auth.uid;
-    const db = admin.firestore();
-    const streamClient = getStreamClient();
-    if (!streamClient) {
-        throw new functions.https.HttpsError("internal", "Stream client is not configured.");
+    const currentUserId = context.auth.uid;
+    const GROUP_SIZE = 5;
+
+    // --- Part 1: Ideal Matching Logic ---
+    let groupFormedForCurrentUser = false;
+
+    const waitingUsersSnapshot = await db.collection('users').where('isWaitingForGroup', '==', true).get();
+
+    if (waitingUsersSnapshot.docs.length >= GROUP_SIZE) {
+        const waitingUsers = waitingUsersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        const userGroups = waitingUsers.reduce((acc, user) => {
+            const personality = user.quizResult || 'unknown';
+            const location = user.locationSector || 'unknown';
+            const key = `${personality}_${location}`;
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(user);
+            return acc;
+        }, {});
+
+        for (const key in userGroups) {
+            if (userGroups[key].length >= GROUP_SIZE) {
+                const groupMembers = userGroups[key].slice(0, GROUP_SIZE);
+                const memberIds = groupMembers.map(user => user.id);
+                
+                if (memberIds.includes(currentUserId)) {
+                    groupFormedForCurrentUser = true;
+                }
+
+                const groupRef = db.collection('groups').doc();
+                const batch = db.batch();
+
+                batch.set(groupRef, {
+                    name: `BiteMates (${groupMembers[0].quizResult || 'Mixed'})`,
+                    members: memberIds, // Security: This is the crucial step
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+
+                for (const member of groupMembers) {
+                    const userRef = db.collection('users').doc(member.id);
+                    batch.update(userRef, { groupId: groupRef.id, isWaitingForGroup: false, groupAssigned: true });
+                }
+                await batch.commit();
+                break; 
+            }
+        }
     }
 
-    const userRef = db.collection("users").doc(uid);
-    const userDoc = await userRef.get();
-    if (!userDoc.exists) throw new functions.https.HttpsError("not-found", "User record not found.");
+    // --- Part 2: Developer Fallback Logic ---
+    const currentUserDoc = await db.collection('users').doc(currentUserId).get();
+    const isCurrentUserStillWaiting = currentUserDoc.exists && currentUserDoc.data().isWaitingForGroup;
+
+    if (isCurrentUserStillWaiting) {
+        const buddySnapshot = await db.collection('users')
+            .where('groupAssigned', '==', false)
+            .where(admin.firestore.FieldPath.documentId(), '!=', currentUserId)
+            .limit(GROUP_SIZE - 1)
+            .get();
+
+        if (buddySnapshot.docs.length === GROUP_SIZE - 1) {
+            const groupMembers = [
+                { id: currentUserId, ...currentUserDoc.data() },
+                ...buddySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+            ];
+            const memberIds = groupMembers.map(user => user.id);
+
+            const groupRef = db.collection('groups').doc();
+            const batch = db.batch();
+
+            batch.set(groupRef, {
+                name: "Dev Test Group",
+                members: memberIds, // Security: This is the crucial step
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            for (const member of groupMembers) {
+                const userRef = db.collection('users').doc(member.id);
+                batch.update(userRef, { groupId: groupRef.id, isWaitingForGroup: false, groupAssigned: true });
+            }
+            await batch.commit();
+            groupFormedForCurrentUser = true;
+        }
+    }
     
-    const currentUser = { uid, ...userDoc.data() };
-    if (currentUser.groupId) return { status: 'already_in_group', groupId: currentUser.groupId };
-    if (!currentUser.sector) throw new functions.https.HttpsError("failed-precondition", "User does not have a sector set.");
-
-    // --- Enter the Matching Pool ---
-    await userRef.update({
-        matching_status: 'searching',
-        matching_started_at: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    
-    // Give the system a moment for other users to join the pool.
-    // This helps increase the chances of forming a larger group on the first try.
-    await new Promise(resolve => setTimeout(resolve, 3000));
-
-    const searchingUsersSnapshot = await db.collection("users")
-        .where("quiz_completed", "==", true)
-        .where("matching_status", "==", "searching")
-        .get();
-
-    let pool = searchingUsersSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
-    
-    if (pool.length < 2) {
-        functions.logger.info(`User ${uid} is searching, but pool size is too small (${pool.length}). Waiting.`);
-        return { status: 'searching' };
+    if(groupFormedForCurrentUser){
+        return { status: 'Group successfully formed for the current user.' };
+    } else {
+        return { status: 'Not enough users for ideal matching, and could not form a developer fallback group.' };
     }
-
-    // Add compatibility scores to each user relative to the current user
-    pool.forEach(user => {
-        user.compatibility = (user.uid === uid) ? 1000 : calculateCompatibility(currentUser, user);
-    });
-    pool.sort((a, b) => b.compatibility - a.compatibility);
-
-    const adjacentSectors = {
-        'southies': ['middle'],
-        'middle': ['southies', 'northies'],
-        'northies': ['middle']
-    };
-
-    // --- Tier 1: Perfect Match (Same Sector, High Compatibility) ---
-    const sameSectorPool = pool.filter(u => u.sector === currentUser.sector);
-    if (sameSectorPool.length >= 5) {
-        const group = sameSectorPool.slice(0, 5);
-        return await finalizeGroup(db, streamClient, group, currentUser.sector, 'perfect');
-    }
-
-    // --- Tier 2: Expanded Match (Adjacent Sectors) ---
-    const relevantSectors = [currentUser.sector, ...(adjacentSectors[currentUser.sector] || [])];
-    const expandedPool = pool.filter(u => relevantSectors.includes(u.sector));
-    if (expandedPool.length >= 5) {
-        const group = expandedPool.slice(0, 5);
-        return await finalizeGroup(db, streamClient, group, currentUser.sector, 'expanded_5');
-    }
-    if (expandedPool.length >= 3) {
-        const group = expandedPool.slice(0, 3);
-        return await finalizeGroup(db, streamClient, group, currentUser.sector, 'expanded_3');
-    }
-
-    // --- Tier 3: Guaranteed Match (Last Resort) ---
-    // If the user has been waiting for a while (e.g., 90 seconds), form the best possible group of 2.
-    const userWaitTime = Date.now() - (currentUser.matching_started_at?.toDate()?.getTime() || Date.now());
-    if (pool.length >= 2 && userWaitTime > 90000) {
-        const group = pool.slice(0, 2); // The pool is already sorted by compatibility
-        return await finalizeGroup(db, streamClient, group, currentUser.sector, 'guaranteed_2');
-    }
-
-    // --- If no criteria met, remain in the pool ---
-    functions.logger.info(`No suitable group found for ${uid} yet. Remaining in pool.`);
-    return { status: 'searching' };
 });
 
-
-// --- Other Functions (Unchanged) ---
-exports.leaveGroup = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
-  }
-  const uid = context.auth.uid;
-  const { groupId } = data;
-  if (!groupId) {
-    throw new functions.https.HttpsError("invalid-argument", "The function must be called with a 'groupId'.");
-  }
-  const db = admin.firestore();
-  const groupRef = db.collection("groups").doc(groupId);
-  const userRef = db.collection("users").doc(uid);
-  try {
-    await db.runTransaction(async (transaction) => {
-      const groupDoc = await transaction.get(groupRef);
-      if (!groupDoc.exists) throw new functions.https.HttpsError("not-found", "Group not found.");
-      const groupData = groupDoc.data();
-      const userIds = groupData.user_ids || [];
-      if (!userIds.includes(uid)) throw new functions.https.HttpsError("permission-denied", "You are not a member of this group.");
-      const updatedUserIds = userIds.filter(id => id !== uid);
-      if (updatedUserIds.length === 0) {
-        transaction.delete(groupRef);
-      } else {
-        transaction.update(groupRef, { user_ids: updatedUserIds });
-      }
-      transaction.update(userRef, { groupId: admin.firestore.FieldValue.delete() });
-    });
-    functions.logger.info(`User ${uid} successfully left group ${groupId}.`);
-    return { status: "success" };
-  } catch (error) {
-    functions.logger.error(`Error leaving group ${groupId} for user ${uid}:`, error);
-    throw new functions.https.HttpsError("internal", "Could not leave group.", error);
-  }
-});
-
-exports.getStreamUserToken = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
-  }
-  const uid = context.auth.uid;
-  const streamClient = getStreamClient(); 
-  if (!streamClient) {
-      throw new functions.https.HttpsError("internal", "Stream client is not available due to missing configuration.");
-  }
-  try {
-    const token = streamClient.createToken(uid);
-    return { token };
-  } catch (err) {
-    console.error(`Error creating Stream token for user ${uid}:`, err);
-    throw new functions.https.HttpsError("internal", "Could not create Stream token.");
-  }
-});
+module.exports = {
+    getStreamToken,
+    getGroupChatToken,
+    createGroups,
+};
