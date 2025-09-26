@@ -13,13 +13,16 @@ class QuizResultsScreen extends StatelessWidget {
     final quizState = Provider.of<QuizState>(context, listen: false);
     final userService = UserService();
 
-    // Personality calculation logic
+    // Calculate personality from answers
     final personality = _calculatePersonality(quizState.answers);
+    
+    // Save the raw quiz answers to Firestore
+    userService.updateUserQuizAnswers(quizState.answers);
 
-    // Save personality to Firestore
+    // Save the calculated personality to Firestore
     userService.updateUserPersonality(personality);
 
-    // Persona determination for display
+    // Determine the persona to display to the user
     final personaData = _getPersona(personality);
 
     return Scaffold(

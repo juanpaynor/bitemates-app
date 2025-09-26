@@ -109,7 +109,7 @@ const createGroups = functions.https.onCall(async (data, context) => {
 
                 batch.set(groupRef, {
                     name: `BiteMates (${groupMembers[0].quizResult || 'Mixed'})`,
-                    members: memberIds, // Security: This is the crucial step
+                    members: memberIds,
                     createdAt: admin.firestore.FieldValue.serverTimestamp(),
                 });
 
@@ -123,46 +123,45 @@ const createGroups = functions.https.onCall(async (data, context) => {
         }
     }
 
-    // --- Part 2: Developer Fallback Logic ---
+    // --- Part 2: Developer Fallback Logic (Corrected) ---
     const currentUserDoc = await db.collection('users').doc(currentUserId).get();
-    const isCurrentUserStillWaiting = currentUserDoc.exists && currentUserDoc.data().isWaitingForGroup;
-
-    if (isCurrentUserStillWaiting) {
-        const buddySnapshot = await db.collection('users')
-            .where('groupAssigned', '==', false)
-            .where(admin.firestore.FieldPath.documentId(), '!=', currentUserId)
-            .limit(GROUP_SIZE - 1)
-            .get();
-
-        if (buddySnapshot.docs.length === GROUP_SIZE - 1) {
-            const groupMembers = [
-                { id: currentUserId, ...currentUserDoc.data() },
-                ...buddySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-            ];
-            const memberIds = groupMembers.map(user => user.id);
-
-            const groupRef = db.collection('groups').doc();
-            const batch = db.batch();
-
-            batch.set(groupRef, {
-                name: "Dev Test Group",
-                members: memberIds, // Security: This is the crucial step
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-
-            for (const member of groupMembers) {
-                const userRef = db.collection('users').doc(member.id);
-                batch.update(userRef, { groupId: groupRef.id, isWaitingForGroup: false, groupAssigned: true });
-            }
-            await batch.commit();
-            groupFormedForCurrentUser = true;
-        }
+    if (!currentUserDoc.exists || !currentUserDoc.data().isWaitingForGroup) {
+        // If current user isn't waiting, no need to proceed.
+        return { status: 'User is not waiting for a group.' };
     }
-    
-    if(groupFormedForCurrentUser){
-        return { status: 'Group successfully formed for the current user.' };
+
+    const buddySnapshot = await db.collection('users')
+        .where('groupAssigned', '==', false)
+        .where(admin.firestore.FieldPath.documentId(), '!=', currentUserId)
+        .limit(GROUP_SIZE - 1)
+        .get();
+
+    // *** THE FIX: Check if we found AT LEAST ONE buddy, not exactly 4 ***
+    if (buddySnapshot.docs.length > 0) {
+        const groupMembers = [
+            { id: currentUserId, ...currentUserDoc.data() },
+            ...buddySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        ];
+        const memberIds = groupMembers.map(user => user.id);
+
+        const groupRef = db.collection('groups').doc();
+        const batch = db.batch();
+
+        batch.set(groupRef, {
+            name: "Dev Test Group",
+            members: memberIds, // Security: This is the crucial step
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        for (const member of groupMembers) {
+            const userRef = db.collection('users').doc(member.id);
+            batch.update(userRef, { groupId: groupRef.id, isWaitingForGroup: false, groupAssigned: true });
+        }
+        await batch.commit();
+        groupFormedForCurrentUser = true;
+        return { status: 'Success: Developer fallback group created.' };
     } else {
-        return { status: 'Not enough users for ideal matching, and could not form a developer fallback group.' };
+         return { status: 'Failure: Not enough available users to form a fallback group.' };
     }
 });
 

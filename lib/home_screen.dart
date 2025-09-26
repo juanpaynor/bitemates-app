@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:myapp/auth_notifier.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:myapp/app_drawer.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -42,9 +44,7 @@ class HomeScreen extends StatelessWidget {
           children: [
             _buildProfileCard(nickname, photoUrl),
             const SizedBox(height: 40),
-            _buildFindGroupCard(context),
-            const SizedBox(height: 20),
-            _buildChatCard(context), // Added chat card
+            _buildSmartGroupCard(context), // Replaced with smart card
             const SizedBox(height: 40),
             _buildHistorySection(),
           ],
@@ -108,98 +108,76 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFindGroupCard(BuildContext context) {
-    return InkWell(
-      onTap: () => context.go('/matching'),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [brandOrange, brandOrange.withOpacity(0.8)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+  Widget _buildSmartGroupCard(BuildContext context) {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return const SizedBox.shrink(); // Should not happen if user is logged in
+
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final userData = snapshot.data!.data() as Map<String, dynamic>?;
+        final String? groupId = userData?['groupId'];
+        final bool hasGroup = groupId != null && groupId.isNotEmpty;
+
+        return InkWell(
+          onTap: () {
+            if (hasGroup) {
+              context.go('/my-group/$groupId');
+            } else {
+              context.go('/matching');
+            }
+          },
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [brandOrange, brandOrange.withOpacity(0.8)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: brandOrange.withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(hasGroup ? Icons.chat_bubble_outline : Icons.group_add, color: Colors.white, size: 40),
+                const SizedBox(height: 15),
+                Text(
+                  hasGroup ? 'Go to Group Chat' : 'Find Your Bitemates',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  hasGroup ? 'Continue the conversation with your foodie friends.' : 'Start the matching process and meet your new foodie friends.',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white.withOpacity(0.9),
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
           ),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: brandOrange.withOpacity(0.3),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.group_add, color: Colors.white, size: 40),
-            const SizedBox(height: 15),
-            Text(
-              'Find Your Bitemates',
-              style: GoogleFonts.poppins(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              'Start the matching process and meet your new foodie friends.',
-              style: GoogleFonts.poppins(
-                color: Colors.white.withOpacity(0.9),
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-      ),
+        );
+      },
     );
   }
 
-  // Added chat card widget
-  Widget _buildChatCard(BuildContext context) {
-    return InkWell(
-      onTap: () => context.go('/chat'),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
-        decoration: BoxDecoration(
-          color: const Color(0xFF4A90E2), // A nice blue for chat
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF4A90E2).withOpacity(0.3),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.chat_bubble_outline, color: Colors.white, size: 40),
-            const SizedBox(height: 15),
-            Text(
-              'Go to Chat',
-              style: GoogleFonts.poppins(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              'Talk with your Bitemates.',
-              style: GoogleFonts.poppins(
-                color: Colors.white.withOpacity(0.9),
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildHistorySection() {
     return Column(

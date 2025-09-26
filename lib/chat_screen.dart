@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:stream_chat_flutter/stream_chat_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ChatScreen extends StatefulWidget {
   final String groupId;
@@ -16,6 +17,7 @@ class _ChatScreenState extends State<ChatScreen> {
   late final StreamChatClient _client;
   late final Channel _channel;
   late final Future<void> _connectFuture;
+  late final Future<String> _groupMembersFuture;
 
   // Your public Stream API Key
   final String _apiKey = '4gk8q5z64nx5';
@@ -28,23 +30,20 @@ class _ChatScreenState extends State<ChatScreen> {
       logLevel: Level.INFO,
     );
 
-    // The channel is now defined using the groupId passed to the widget
     _channel = _client.channel('messaging', id: widget.groupId);
 
-    // Start the secure connection process for the specific group
     _connectFuture = _connectToGroupChat();
+    _groupMembersFuture = _getGroupMembers();
   }
 
   Future<void> _connectToGroupChat() async {
     try {
-      // 1. Get the current Firebase User
       final firebaseUser = fb_auth.FirebaseAuth.instance.currentUser;
       if (firebaseUser == null) {
         throw Exception('User is not authenticated with Firebase.');
       }
       final userId = firebaseUser.uid;
 
-      // 2. Call the new Cloud Function to get a token for the group chat
       final functions = FirebaseFunctions.instance;
       final callable = functions.httpsCallable('getGroupChatToken');
       final results = await callable.call(<String, dynamic>{
@@ -56,22 +55,43 @@ class _ChatScreenState extends State<ChatScreen> {
           throw Exception('The Stream token received from the backend was null.');
       }
 
-      // 3. Connect the user to Stream using the secure token
       await _client.connectUser(
-        User(id: userId), // The user ID must match the one used to generate the token
+        User(id: userId),
         token,
       );
 
-      // 4. Watch the channel to start receiving messages
       await _channel.watch();
 
     } catch (e, st) {
       debugPrint('Error connecting user to group chat: $e');
       debugPrint(st.toString());
-      // Re-throw the error to be caught by the FutureBuilder
       rethrow;
     }
   }
+  
+    Future<String> _getGroupMembers() async {
+    try {
+      final groupDoc = await FirebaseFirestore.instance.collection('groups').doc(widget.groupId).get();
+      final memberIds = List<String>.from(groupDoc.data()?['members'] ?? []);
+
+      if (memberIds.isEmpty) {
+        return "Group Members";
+      }
+
+      final memberNicknames = <String>[];
+      for (String memberId in memberIds) {
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(memberId).get();
+        final nickname = userDoc.data()?['nickname'] as String? ?? 'Unknown';
+        memberNicknames.add(nickname);
+      }
+
+      return memberNicknames.join(', ');
+    } catch (e) {
+      debugPrint('Error getting group members: $e');
+      return "Group Chat";
+    }
+  }
+
 
   @override
   void dispose() {
@@ -83,7 +103,18 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Group Chat'),
+        title: FutureBuilder<String>(
+          future: _groupMembersFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Text('Loading...');
+            }
+            if (snapshot.hasError) {
+              return const Text('Group Chat');
+            }
+            return Text(snapshot.data ?? 'Group Chat', overflow: TextOverflow.ellipsis);
+          },
+        ),
         backgroundColor: const Color(0xFFFF6B35),
       ),
       body: FutureBuilder(
@@ -105,7 +136,6 @@ class _ChatScreenState extends State<ChatScreen> {
             );
           }
 
-          // If connection is successful, show the chat UI
           return StreamChat(
             client: _client,
             child: StreamChannel(

@@ -21,6 +21,16 @@ class UserService {
     }
   }
 
+  Future<void> updateUserQuizAnswers(List<int> answers) async {
+    final user = _auth.currentUser;
+    if (user != null) {
+      await _firestore.collection('users').doc(user.uid).update({
+        'quizAnswers': answers,
+        'quiz_completed': true,
+      });
+    }
+  }
+
   Future<String> uploadProfilePicture(Uint8List imageBytes, String imageName, String userId) async {
     try {
       final Reference storageRef = _storage.ref().child('profile_pictures/$userId/$imageName');
