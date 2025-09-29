@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_app_check/firebase_app_check.dart';
+// import 'package:firebase_app_check/firebase_app_check.dart'; // Disabled temporarily
 import 'package:myapp/auth_notifier.dart';
 import 'package:myapp/firebase_options.dart';
 import 'package:myapp/app_router.dart';
@@ -13,10 +13,12 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  await FirebaseAppCheck.instance.activate(
-    webProvider: ReCaptchaV3Provider('recaptcha-v3-site-key'),
-    androidProvider: AndroidProvider.debug,
-  );
+  // Temporarily disable App Check to fix ReCAPTCHA errors
+  // TODO: Configure proper reCAPTCHA keys for production
+  // await FirebaseAppCheck.instance.activate(
+  //   webProvider: ReCaptchaV3Provider('recaptcha-v3-site-key'),
+  //   androidProvider: AndroidProvider.debug,
+  // );
   runApp(const MyApp());
 }
 

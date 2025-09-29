@@ -13,6 +13,11 @@ const getStreamToken = functions.runWith({ secrets: ["STREAM_API_KEY", "STREAM_A
     try {
         const apiKey = process.env.STREAM_API_KEY;
         const apiSecret = process.env.STREAM_API_SECRET;
+        
+        if (!apiKey || !apiSecret) {
+            throw new functions.https.HttpsError("internal", "Stream Chat credentials not configured.");
+        }
+        
         const serverClient = StreamChat.getInstance(apiKey, apiSecret);
         const token = serverClient.createToken(context.auth.uid);
         return { token: token };
@@ -22,7 +27,7 @@ const getStreamToken = functions.runWith({ secrets: ["STREAM_API_KEY", "STREAM_A
     }
 });
 
-// This function securely provides a token for a specific group chat after verifying membership.
+// Stream Chat integration with proper credentials
 const getGroupChatToken = functions.runWith({ secrets: ["STREAM_API_KEY", "STREAM_API_SECRET"] }).https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
@@ -44,124 +49,247 @@ const getGroupChatToken = functions.runWith({ secrets: ["STREAM_API_KEY", "STREA
             throw new functions.https.HttpsError("permission-denied", "User is not a member of this group.");
         }
 
+        // Get credentials from Firebase secrets
         const apiKey = process.env.STREAM_API_KEY;
         const apiSecret = process.env.STREAM_API_SECRET;
-        const serverClient = StreamChat.getInstance(apiKey, apiSecret);
+        
+        if (!apiKey || !apiSecret) {
+            console.error('Stream Chat credentials missing');
+            throw new functions.https.HttpsError("internal", "Stream Chat not configured");
+        }
+        
+        console.log('Creating Stream Chat token for user:', userId, 'in group:', groupId);
 
-        const channel = serverClient.channel("messaging", groupId, {
-            name: groupData.name || "Unnamed Group",
-            created_by_id: userId, 
-            members: groupMembers, 
+        // Initialize Stream Chat
+        const serverClient = StreamChat.getInstance(apiKey, apiSecret);
+        
+        // Get user information for Stream Chat
+        const userDoc = await db.collection("users").doc(userId).get();
+        const userData = userDoc.data() || {};
+        const userNickname = userData.nickname || userData.email || `User_${userId.substring(0, 8)}`;
+
+        // Create/update user in Stream Chat
+        await serverClient.upsertUser({
+            id: userId,
+            name: userNickname,
+            image: userData.photoUrl || undefined,
         });
-        await channel.create();
+
+        // Create/get channel
+        const channel = serverClient.channel("messaging", groupId, {
+            name: groupData.name || "BiteMates Chat",
+            created_by_id: userId,
+            members: groupMembers,
+        });
+
+        try {
+            await channel.create();
+            console.log('Channel created successfully');
+        } catch (channelError) {
+            console.log('Channel might already exist:', channelError.message);
+            // Channel exists, which is fine
+        }
 
         const token = serverClient.createToken(userId);
-
-        return { token: token };
+        
+        return { 
+            token: token,
+            apiKey: apiKey,
+            groupName: groupData.name || "BiteMates Chat",
+            success: true
+        };
 
     } catch (error) {
-        console.error(`Error processing group chat token for user ${userId} and group ${groupId}:`, error);
+        console.error(`Error in getGroupChatToken:`, error);
         if (error instanceof functions.https.HttpsError) {
             throw error; 
         } 
-        throw new functions.https.HttpsError("internal", "An unexpected error occurred.");
+        throw new functions.https.HttpsError("internal", `Chat setup failed: ${error.message}`);
     }
 });
 
 
-// Hybrid matching function with ideal logic and a developer fallback.
+// Development-friendly matching function with smaller group sizes
 const createGroups = functions.https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
     }
 
     const currentUserId = context.auth.uid;
-    const GROUP_SIZE = 5;
+    const GROUP_SIZE = 2; // Reduced to 2 for development with 3 users
+    const MAX_GROUP_SIZE = 3; // Allow up to 3 users per group
 
-    // --- Part 1: Ideal Matching Logic ---
-    let groupFormedForCurrentUser = false;
+    console.log(`createGroups called by user: ${currentUserId}`);
 
-    const waitingUsersSnapshot = await db.collection('users').where('isWaitingForGroup', '==', true).get();
+    // Use transaction to prevent race conditions
+    const result = await db.runTransaction(async (transaction) => {
+        // Check if current user is still waiting
+        const currentUserRef = db.collection('users').doc(currentUserId);
+        const currentUserDoc = await transaction.get(currentUserRef);
+        
+        if (!currentUserDoc.exists) {
+            throw new functions.https.HttpsError("not-found", "User not found.");
+        }
+        
+        const userData = currentUserDoc.data();
+        if (!userData.isWaitingForGroup || userData.groupAssigned) {
+            return { status: 'User is no longer waiting for a group.' };
+        }
 
-    if (waitingUsersSnapshot.docs.length >= GROUP_SIZE) {
+        // Get all waiting users (including current user)
+        const waitingUsersSnapshot = await transaction.get(
+            db.collection('users')
+                .where('isWaitingForGroup', '==', true)
+                .where('groupAssigned', '==', false)
+        );
+
+        console.log(`Found ${waitingUsersSnapshot.docs.length} waiting users`);
+
+        if (waitingUsersSnapshot.docs.length < GROUP_SIZE) {
+            console.log(`Only ${waitingUsersSnapshot.docs.length} users waiting, need at least ${GROUP_SIZE}`);
+            return { status: `Not enough users waiting. Found ${waitingUsersSnapshot.docs.length}, need at least ${GROUP_SIZE}.` };
+        }
+
         const waitingUsers = waitingUsersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-        const userGroups = waitingUsers.reduce((acc, user) => {
-            const personality = user.quizResult || 'unknown';
-            const location = user.locationSector || 'unknown';
-            const key = `${personality}_${location}`;
-            if (!acc[key]) acc[key] = [];
-            acc[key].push(user);
-            return acc;
-        }, {});
-
-        for (const key in userGroups) {
-            if (userGroups[key].length >= GROUP_SIZE) {
-                const groupMembers = userGroups[key].slice(0, GROUP_SIZE);
-                const memberIds = groupMembers.map(user => user.id);
-                
-                if (memberIds.includes(currentUserId)) {
-                    groupFormedForCurrentUser = true;
-                }
-
-                const groupRef = db.collection('groups').doc();
-                const batch = db.batch();
-
-                batch.set(groupRef, {
-                    name: `BiteMates (${groupMembers[0].quizResult || 'Mixed'})`,
-                    members: memberIds,
-                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                });
-
-                for (const member of groupMembers) {
-                    const userRef = db.collection('users').doc(member.id);
-                    batch.update(userRef, { groupId: groupRef.id, isWaitingForGroup: false, groupAssigned: true });
-                }
-                await batch.commit();
-                break; 
-            }
-        }
-    }
-
-    // --- Part 2: Developer Fallback Logic (Corrected) ---
-    const currentUserDoc = await db.collection('users').doc(currentUserId).get();
-    if (!currentUserDoc.exists || !currentUserDoc.data().isWaitingForGroup) {
-        // If current user isn't waiting, no need to proceed.
-        return { status: 'User is not waiting for a group.' };
-    }
-
-    const buddySnapshot = await db.collection('users')
-        .where('groupAssigned', '==', false)
-        .where(admin.firestore.FieldPath.documentId(), '!=', currentUserId)
-        .limit(GROUP_SIZE - 1)
-        .get();
-
-    // *** THE FIX: Check if we found AT LEAST ONE buddy, not exactly 4 ***
-    if (buddySnapshot.docs.length > 0) {
-        const groupMembers = [
-            { id: currentUserId, ...currentUserDoc.data() },
-            ...buddySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-        ];
+        // For development: Create a group with all available users (up to MAX_GROUP_SIZE)
+        const groupMembers = waitingUsers.slice(0, Math.min(waitingUsers.length, MAX_GROUP_SIZE));
         const memberIds = groupMembers.map(user => user.id);
 
-        const groupRef = db.collection('groups').doc();
-        const batch = db.batch();
+        console.log(`Creating development group with users: ${memberIds.join(', ')}`);
 
-        batch.set(groupRef, {
-            name: "Dev Test Group",
-            members: memberIds, // Security: This is the crucial step
+        const groupRef = db.collection('groups').doc();
+        const groupName = `BiteMates Dev Group (${groupMembers.length} members)`;
+        
+        // Create group document
+        transaction.set(groupRef, {
+            name: groupName,
+            members: memberIds,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            matchingCriteria: 'development',
+            groupType: 'dev_test',
         });
 
+        // Update all member users
         for (const member of groupMembers) {
             const userRef = db.collection('users').doc(member.id);
-            batch.update(userRef, { groupId: groupRef.id, isWaitingForGroup: false, groupAssigned: true });
+            transaction.update(userRef, { 
+                groupId: groupRef.id, 
+                isWaitingForGroup: false, 
+                groupAssigned: true,
+                assignedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
         }
+
+        console.log(`Created group ${groupRef.id} with ${memberIds.length} members: ${memberIds.join(', ')}`);
+
+        return { 
+            status: 'Success: Development group created!',
+            groupId: groupRef.id,
+            groupName: groupName,
+            memberCount: memberIds.length,
+            members: memberIds,
+            userAssigned: memberIds.includes(currentUserId)
+        };
+    });
+
+    console.log(`createGroups result:`, result);
+    return result;
+});
+
+// Development helper function to reset all users for testing
+const resetUsersForTesting = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
+    }
+
+    console.log(`resetUsersForTesting called by user: ${context.auth.uid}`);
+
+    try {
+        const batch = db.batch();
+
+        // Get all users
+        const usersSnapshot = await db.collection('users').get();
+        console.log(`Found ${usersSnapshot.docs.length} users to reset`);
+
+        // Reset all users to waiting state
+        usersSnapshot.docs.forEach(doc => {
+            const userRef = db.collection('users').doc(doc.id);
+            batch.update(userRef, {
+                isWaitingForGroup: true,
+                groupAssigned: false,
+                groupId: admin.firestore.FieldValue.delete(),
+                assignedAt: admin.firestore.FieldValue.delete(),
+            });
+        });
+
+        // Delete all existing groups
+        const groupsSnapshot = await db.collection('groups').get();
+        console.log(`Found ${groupsSnapshot.docs.length} groups to delete`);
+        
+        groupsSnapshot.docs.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+
         await batch.commit();
-        groupFormedForCurrentUser = true;
-        return { status: 'Success: Developer fallback group created.' };
-    } else {
-         return { status: 'Failure: Not enough available users to form a fallback group.' };
+
+        return { 
+            status: 'Success: All users reset for testing',
+            usersReset: usersSnapshot.docs.length,
+            groupsDeleted: groupsSnapshot.docs.length
+        };
+    } catch (error) {
+        console.error('Error resetting users:', error);
+        throw new functions.https.HttpsError("internal", "Failed to reset users for testing.");
+    }
+});
+
+// Test function to verify Stream Chat credentials
+const testStreamChat = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "The function must be called while authenticated.");
+    }
+
+    try {
+        const apiKey = process.env.STREAM_API_KEY;
+        const apiSecret = process.env.STREAM_API_SECRET;
+        
+        console.log('Testing Stream Chat credentials...');
+        console.log('API Key:', apiKey ? 'Present' : 'Missing');
+        console.log('API Secret:', apiSecret ? 'Present (length: ' + apiSecret.length + ')' : 'Missing');
+        
+        if (!apiKey || !apiSecret) {
+            return {
+                success: false,
+                error: 'Stream Chat credentials missing',
+                apiKey: apiKey ? 'present' : 'missing',
+                apiSecret: apiSecret ? 'present' : 'missing'
+            };
+        }
+
+        const serverClient = StreamChat.getInstance(apiKey, apiSecret);
+        const testUserId = context.auth.uid;
+        
+        // Test token creation
+        const token = serverClient.createToken(testUserId);
+        
+        console.log('Token created successfully for user:', testUserId);
+        
+        return {
+            success: true,
+            message: 'Stream Chat credentials are working!',
+            apiKey: apiKey,
+            tokenLength: token.length,
+            userId: testUserId
+        };
+
+    } catch (error) {
+        console.error('Stream Chat test error:', error);
+        return {
+            success: false,
+            error: error.message,
+            stack: error.stack
+        };
     }
 });
 
@@ -169,4 +297,6 @@ module.exports = {
     getStreamToken,
     getGroupChatToken,
     createGroups,
+    resetUsersForTesting,
+    testStreamChat, // Add the test function
 };

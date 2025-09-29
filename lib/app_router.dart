@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myapp/auth_notifier.dart';
-import 'package:myapp/chat_screen.dart'; // Added import
+import 'package:myapp/simple_chat_screen.dart'; // Use simple chat for development
 import 'package:myapp/home_screen.dart';
 import 'package:myapp/bitemates_login_screen.dart';
 import 'package:myapp/bitemates_signup_screen.dart';
@@ -73,12 +73,12 @@ class AppRouter {
             return MyGroupScreen(groupId: groupId);
           },
         ),
-        // Updated chat route to accept a groupId
+        // Updated chat route to accept a groupId - using simple chat for development
         GoRoute(
           path: '/chat/:groupId',
           builder: (context, state) {
             final groupId = state.pathParameters['groupId']!;
-            return ChatScreen(groupId: groupId);
+            return SimpleChatScreen(groupId: groupId);
           },
         ),
       ],

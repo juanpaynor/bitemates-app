@@ -69,9 +69,9 @@ class _MatchingScreenState extends State<MatchingScreen> {
       }
     });
 
-    // Start polling the createGroups function
+    // Start polling the createGroups function - faster for development
     _callCreateGroups(); // Call it once immediately
-    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) { // Reduced from 10 to 3 seconds
       _callCreateGroups();
     });
   }

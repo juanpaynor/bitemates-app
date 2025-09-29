@@ -20,7 +20,9 @@ class _SplashScreenState extends State<SplashScreen> {
   void _navigateToNextScreen() {
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) {
-        context.replace('/');
+        // Let the router handle the redirect logic based on auth state
+        // The router will automatically redirect to the appropriate screen
+        context.replace('/login');
       }
     });
   }

@@ -14,29 +14,20 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  late final StreamChatClient _client;
-  late final Channel _channel;
+  StreamChatClient? _client;
+  Channel? _channel;
   late final Future<void> _connectFuture;
   late final Future<String> _groupMembersFuture;
-
-  // Your public Stream API Key
-  final String _apiKey = '4gk8q5z64nx5';
 
   @override
   void initState() {
     super.initState();
-    _client = StreamChatClient(
-      _apiKey, // Use your actual API key here
-      logLevel: Level.INFO,
-    );
-
-    _channel = _client.channel('messaging', id: widget.groupId);
-
-    _connectFuture = _connectToGroupChat();
+    // Initialize client without API key - will get it from backend
+    _connectFuture = _initializeChat();
     _groupMembersFuture = _getGroupMembers();
   }
 
-  Future<void> _connectToGroupChat() async {
+  Future<void> _initializeChat() async {
     try {
       final firebaseUser = fb_auth.FirebaseAuth.instance.currentUser;
       if (firebaseUser == null) {
@@ -44,27 +35,64 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       final userId = firebaseUser.uid;
 
+      debugPrint('🔵 Starting chat initialization for user: $userId, group: ${widget.groupId}');
+
+      // Get Stream Chat token and API key from backend
       final functions = FirebaseFunctions.instance;
       final callable = functions.httpsCallable('getGroupChatToken');
+      
+      debugPrint('🔵 Calling getGroupChatToken function...');
+      
       final results = await callable.call(<String, dynamic>{
         'groupId': widget.groupId,
       });
+      
+      debugPrint('🟢 Function call successful: ${results.data}');
+      
       final token = results.data['token'];
-
-      if (token == null) {
-          throw Exception('The Stream token received from the backend was null.');
+      final apiKey = results.data['apiKey'];
+      
+      if (token == null || apiKey == null) {
+        throw Exception('Failed to get Stream Chat credentials from backend.');
       }
 
-      await _client.connectUser(
-        User(id: userId),
-        token,
+      debugPrint('🔵 Got credentials - API Key: $apiKey, Token length: ${token.length}');
+
+      // Initialize client with API key from backend  
+      _client = StreamChatClient(
+        apiKey, 
+        logLevel: Level.INFO,
       );
 
-      await _channel.watch();
+      debugPrint('🔵 Connecting user to Stream Chat...');
+
+      // Create user object with more details
+      final user = User(
+        id: userId,
+        name: firebaseUser.displayName ?? firebaseUser.email ?? 'User',
+        image: firebaseUser.photoURL,
+      );
+
+      await _client!.connectUser(user, token);
+      debugPrint('🟢 User connected successfully');
+
+      // Initialize channel
+      _channel = _client!.channel(
+        'messaging', 
+        id: widget.groupId,
+        extraData: {
+          'name': 'BiteMates Chat',
+          'image': 'https://bit.ly/2TIt8NR',
+        },
+      );
+
+      debugPrint('🔵 Watching channel...');
+      await _channel!.watch();
+      debugPrint('🟢 Channel watch successful');
 
     } catch (e, st) {
-      debugPrint('Error connecting user to group chat: $e');
-      debugPrint(st.toString());
+      debugPrint('🔴 Error connecting user to group chat: $e');
+      debugPrint('🔴 Stack trace: $st');
       rethrow;
     }
   }
@@ -95,7 +123,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    _client.disconnectUser();
+    _client?.disconnectUser();
     super.dispose();
   }
 
@@ -116,30 +144,75 @@ class _ChatScreenState extends State<ChatScreen> {
           },
         ),
         backgroundColor: const Color(0xFFFF6B35),
+        foregroundColor: Colors.white,
       ),
       body: FutureBuilder(
         future: _connectFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF6B35)),
+                  ),
+                  SizedBox(height: 20),
+                  Text('Connecting to chat...'),
+                  SizedBox(height: 10),
+                  Text(
+                    'Setting up your group chat securely',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+            );
           }
 
           if (snapshot.hasError) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
-                child: Text(
-                  'An error occurred connecting to the chat. Please try again later.\n\nDetails: ${snapshot.error}',
-                  textAlign: TextAlign.center,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      size: 64,
+                      color: Colors.red,
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Chat Connection Error',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Unable to connect to the chat.\n\n${snapshot.error}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 20),
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                      },
+                      child: const Text('Go Back'),
+                    ),
+                  ],
                 ),
               ),
             );
           }
 
+          // Successfully connected - show chat
           return StreamChat(
-            client: _client,
+            client: _client!,
             child: StreamChannel(
-              channel: _channel,
+              channel: _channel!,
               child: Column(
                 children: const <Widget>[
                   Expanded(
