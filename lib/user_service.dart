@@ -14,8 +14,12 @@ class UserService {
   Future<void> updateUserPersonality(Map<String, dynamic> personality) async {
     final user = _auth.currentUser;
     if (user != null) {
+      // Extract the quiz_result for the matching algorithm
+      String? quizResult = personality['quiz_result'];
+      
       await _firestore.collection('users').doc(user.uid).update({
         'personality': personality,
+        'quizResult': quizResult, // For matching algorithm compatibility
         'quiz_completed': true,
       });
     }

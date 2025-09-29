@@ -6,7 +6,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:myapp/app_drawer.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -28,7 +27,7 @@ class HomeScreen extends StatelessWidget {
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: Text(
-          'Dashboard',
+          'Home',
           style: GoogleFonts.poppins(
             color: brandBlack,
             fontWeight: FontWeight.bold,
@@ -44,13 +43,12 @@ class HomeScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildProfileCard(nickname, photoUrl),
-            const SizedBox(height: 40),
-            _buildSmartGroupCard(context), // Replaced with smart card
+            const SizedBox(height: 30),
+            _buildSmartGroupCard(context),
             const SizedBox(height: 20),
-            // Development Reset Button
-            _buildDevResetButton(context),
-            const SizedBox(height: 40),
-            _buildHistorySection(),
+            _buildFindNewGroupButton(context),
+            const SizedBox(height: 30),
+            _buildRecentMatchesSection(context),
           ],
         ),
       ),
@@ -182,8 +180,41 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildFindNewGroupButton(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: () {
+          context.go('/matching');
+        },
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.white,
+          foregroundColor: brandOrange,
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+            side: BorderSide(color: brandOrange, width: 2),
+          ),
+          elevation: 0,
+        ),
+        icon: Icon(Icons.search, color: brandOrange),
+        label: Text(
+          'Find New Group',
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: brandOrange,
+          ),
+        ),
+      ),
+    );
+  }
 
-  Widget _buildHistorySection() {
+
+  Widget _buildRecentMatchesSection(BuildContext context) {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return const SizedBox.shrink();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -196,143 +227,193 @@ class HomeScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 20),
-        Container(
-          padding: const EdgeInsets.all(25),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.grey.shade200),
-          ),
-          child: Center(
-            child: Column(
-              children: [
-                Icon(
-                  Icons.history,
-                  color: Colors.grey.shade400,
-                  size: 50,
+        
+        // Recent groups from Firebase
+        StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('groups')
+              .where('members', arrayContains: currentUser.uid)
+              .orderBy('createdAt', descending: true)
+              .limit(5)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              return Container(
+                padding: const EdgeInsets.all(25),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.grey.shade200),
                 ),
-                const SizedBox(height: 15),
-                Text(
-                  'No match history yet',
-                  style: GoogleFonts.poppins(
-                    color: Colors.grey.shade600,
-                    fontSize: 16,
+                child: Center(
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.history,
+                        color: Colors.grey.shade400,
+                        size: 50,
+                      ),
+                      const SizedBox(height: 15),
+                      Text(
+                        'No match history yet',
+                        style: GoogleFonts.poppins(
+                          color: Colors.grey.shade600,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Start matching to see your groups here!',
+                        style: GoogleFonts.poppins(
+                          color: Colors.grey.shade500,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ),
+              );
+            }
+            
+            return Column(
+              children: snapshot.data!.docs.map((doc) {
+                final groupData = doc.data() as Map<String, dynamic>;
+                final groupId = doc.id;
+                final groupName = groupData['name'] ?? 'BiteMates Group';
+                final memberCount = (groupData['members'] as List?)?.length ?? 0;
+                final createdAt = (groupData['createdAt'] as Timestamp?)?.toDate();
+                final compatibilityScore = groupData['compatibilityScore']?.toDouble();
+                
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: InkWell(
+                    onTap: () {
+                      context.go('/my-group/$groupId');
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade200),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              color: brandOrange.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Icons.group,
+                              color: brandOrange,
+                              size: 24,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  groupName,
+                                  style: GoogleFonts.poppins(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                    color: brandBlack,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.people,
+                                      size: 14,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '$memberCount members',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600,
+                                      ),
+                                    ),
+                                    if (compatibilityScore != null) ...[
+                                      const SizedBox(width: 12),
+                                      Icon(
+                                        Icons.favorite,
+                                        size: 14,
+                                        color: brandOrange,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '${(compatibilityScore * 100).toInt()}%',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 12,
+                                          color: brandOrange,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                if (createdAt != null) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _getTimeAgo(createdAt),
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade500,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.arrow_forward_ios,
+                            size: 16,
+                            color: Colors.grey.shade400,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            );
+          },
         ),
       ],
     );
   }
 
-  Widget _buildDevResetButton(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.orange.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: brandOrange.withOpacity(0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.bug_report, color: brandOrange, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'Development Tools',
-                style: GoogleFonts.poppins(
-                  color: brandOrange,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => _resetUsersForTesting(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: brandOrange,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: Text(
-                    'Reset All Users',
-                    style: GoogleFonts.poppins(fontSize: 12),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => context.go('/matching'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: Text(
-                    'Start Matching',
-                    style: GoogleFonts.poppins(fontSize: 12),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _resetUsersForTesting(BuildContext context) async {
-    try {
-      final functions = FirebaseFunctions.instance;
-      final callable = functions.httpsCallable('resetUsersForTesting');
-      
-      // Show loading
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Resetting users for testing...'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-      
-      final result = await callable.call();
-      final data = result.data;
-      
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Reset complete! ${data['usersReset']} users reset, ${data['groupsDeleted']} groups deleted.'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error resetting users: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+  String _getTimeAgo(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+    
+    if (difference.inDays > 0) {
+      return '${difference.inDays} days ago';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours} hours ago';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes} minutes ago';
+    } else {
+      return 'Just now';
     }
   }
 }

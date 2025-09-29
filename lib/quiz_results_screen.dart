@@ -142,13 +142,31 @@ class QuizResultsScreen extends StatelessWidget {
     if (answers[6] <= 1) interests.add("Music");
     if (answers[2] == 2) interests.add("Gaming");
 
+    // NEW: Calculate primary personality type for matching
+    String quizResult = _determineQuizResult(extraversion, openness, chillFactor);
+
     return {
       'extraversion': extraversion,
       'openness': openness,
       'chill_factor': chillFactor,
       'conversation_style': conversationStyle,
       'interests': interests,
+      'quiz_result': quizResult, // Add this for matching algorithm
     };
+  }
+
+  // NEW: Determine primary personality type for matching
+  String _determineQuizResult(int extraversion, int openness, int chillFactor) {
+    // Priority-based classification
+    if (extraversion > 3) {
+      return 'social';        // High extraversion = social connector
+    } else if (openness > 2) {
+      return 'explorer';      // High openness = adventurous explorer  
+    } else if (chillFactor > 2) {
+      return 'chill';         // High chill factor = chill listener
+    } else {
+      return 'balanced';      // Mixed scores = balanced contributor
+    }
   }
 
   Map<String, String> _getPersona(Map<String, dynamic> personality) {
