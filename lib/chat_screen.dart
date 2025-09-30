@@ -165,10 +165,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
       debugPrint('🔵 Got credentials - API Key: $apiKey, Token length: ${token.length}');
 
-      // Initialize client with API key from backend  
+      // Initialize client with API key from backend and proper configuration
       _client = StreamChatClient(
-        apiKey, 
-        logLevel: Level.INFO,
+        apiKey,
+        logLevel: Level.WARNING, // Reduce logging to only warnings and errors
       );
 
       debugPrint('🔵 Connecting user to Stream Chat...');
@@ -180,10 +180,11 @@ class _ChatScreenState extends State<ChatScreen> {
         image: firebaseUser.photoURL,
       );
 
-      await _client!.connectUser(user, token);
+      // Connect with retry logic
+      await _connectWithRetry(user, token);
       debugPrint('🟢 User connected successfully');
 
-      // Initialize channel
+      // Initialize channel with proper error handling
       _channel = _client!.channel(
         'messaging', 
         id: widget.groupId,
@@ -201,6 +202,28 @@ class _ChatScreenState extends State<ChatScreen> {
       debugPrint('🔴 Error connecting user to group chat: $e');
       debugPrint('🔴 Stack trace: $st');
       rethrow;
+    }
+  }
+
+  Future<void> _connectWithRetry(User user, String token) async {
+    int retryCount = 0;
+    const maxRetries = 3;
+    
+    while (retryCount < maxRetries) {
+      try {
+        await _client!.connectUser(user, token);
+        return; // Success
+      } catch (e) {
+        retryCount++;
+        debugPrint('🔄 Connection attempt $retryCount failed: $e');
+        
+        if (retryCount >= maxRetries) {
+          throw Exception('Failed to connect after $maxRetries attempts: $e');
+        }
+        
+        // Wait before retrying
+        await Future.delayed(Duration(seconds: retryCount * 2));
+      }
     }
   }
   
@@ -316,11 +339,21 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    _client?.disconnectUser();
+    // Properly cleanup Stream Chat connections
+    _cleanupConnections();
     _groupNameController.dispose();
     _textController.dispose();
     _messageController.dispose();
     super.dispose();
+  }
+
+  void _cleanupConnections() {
+    try {
+      _channel?.stopWatching();
+      _client?.disconnectUser();
+    } catch (e) {
+      debugPrint('Error during Stream Chat cleanup: $e');
+    }
   }
 
   @override
@@ -439,24 +472,42 @@ class _ChatScreenState extends State<ChatScreen> {
                       style: const TextStyle(color: Colors.grey),
                     ),
                     const SizedBox(height: 20),
-                    ElevatedButton(
-                      onPressed: () {
-                        // Try to go back gracefully, fall back to home if needed
-                        try {
-                          if (context.canPop()) {
-                            context.pop();
-                          } else {
-                            context.go('/home');
-                          }
-                        } catch (e) {
-                          // Fallback - force navigation to home
-                          context.go('/home');
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF6B35),
-                      ),
-                      child: const Text('Go Back', style: TextStyle(color: Colors.white)),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        ElevatedButton(
+                          onPressed: () {
+                            // Retry connection
+                            setState(() {
+                              _connectFuture = _initializeChat();
+                            });
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFFF6B35),
+                          ),
+                          child: const Text('Retry', style: TextStyle(color: Colors.white)),
+                        ),
+                        const SizedBox(width: 16),
+                        ElevatedButton(
+                          onPressed: () {
+                            // Try to go back gracefully, fall back to home if needed
+                            try {
+                              if (context.canPop()) {
+                                context.pop();
+                              } else {
+                                context.go('/home');
+                              }
+                            } catch (e) {
+                              // Fallback - force navigation to home
+                              context.go('/home');
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey,
+                          ),
+                          child: const Text('Go Back', style: TextStyle(color: Colors.white)),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -653,6 +704,15 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       } catch (e) {
         debugPrint('Error sending message: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to send message. Please try again.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
       }
     }
   }
@@ -1086,20 +1146,24 @@ class _ChatScreenState extends State<ChatScreen> {
         'userId': currentUser.uid,
       });
 
-      // Send a system message to the chat
+      // Send a notification message to the chat
       if (_channel != null) {
-        final nickname = _groupMembers
-            .firstWhere((m) => m['id'] == currentUser.uid, 
-                orElse: () => {'nickname': 'Someone'})['nickname'];
-        
-        final message = choice == 'stay' 
-            ? '$nickname wants to meet up for dinner! 🍽️'
-            : '$nickname will skip this dinner 😔';
-            
-        await _channel!.sendMessage(Message(
-          text: message,
-          type: 'system',
-        ));
+        try {
+          final nickname = _groupMembers
+              .firstWhere((m) => m['id'] == currentUser.uid, 
+                  orElse: () => {'nickname': 'Someone'})['nickname'];
+          
+          final message = choice == 'stay' 
+              ? '🤖 $nickname wants to meet up for dinner! 🍽️'
+              : '🤖 $nickname will skip this dinner 😔';
+              
+          await _channel!.sendMessage(Message(
+            text: message,
+          ));
+        } catch (e) {
+          debugPrint('Error sending notification message: $e');
+          // Don't show error to user since the choice was saved successfully
+        }
       }
 
       // If user chose skip, remove them from the group and navigate to matching

@@ -43,11 +43,9 @@ class HomeScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildProfileCard(nickname, photoUrl),
-            const SizedBox(height: 30),
+            const SizedBox(height: 24),
             _buildSmartGroupCard(context),
-            const SizedBox(height: 20),
-            _buildFindNewGroupButton(context),
-            const SizedBox(height: 30),
+            const SizedBox(height: 32),
             _buildRecentMatchesSection(context),
           ],
         ),
@@ -112,99 +110,231 @@ class HomeScreen extends StatelessWidget {
 
   Widget _buildSmartGroupCard(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) return const SizedBox.shrink(); // Should not happen if user is logged in
+    if (currentUser == null) return const SizedBox.shrink();
 
     return FutureBuilder<DocumentSnapshot>(
       future: FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get(),
       builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _buildLoadingCard();
+        }
+
         if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
+          return _buildErrorCard(context);
         }
 
         final userData = snapshot.data!.data() as Map<String, dynamic>?;
         final String? groupId = userData?['groupId'];
         final bool hasGroup = groupId != null && groupId.isNotEmpty;
 
-        return InkWell(
-          onTap: () {
-            if (hasGroup) {
-              context.go('/my-group/$groupId');
-            } else {
-              context.go('/matching');
-            }
-          },
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [brandOrange, brandOrange.withOpacity(0.8)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: brandOrange.withOpacity(0.3),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(hasGroup ? Icons.chat_bubble_outline : Icons.group_add, color: Colors.white, size: 40),
-                const SizedBox(height: 15),
-                Text(
-                  hasGroup ? 'Go to Group Chat' : 'Find Your Bitemates',
-                  style: GoogleFonts.poppins(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  hasGroup ? 'Continue the conversation with your foodie friends.' : 'Start the matching process and meet your new foodie friends.',
-                  style: GoogleFonts.poppins(
-                    color: Colors.white.withOpacity(0.9),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
+        if (hasGroup) {
+          return _buildActiveGroupCard(context, groupId);
+        } else {
+          return _buildFindGroupCard(context);
+        }
       },
     );
   }
 
-  Widget _buildFindNewGroupButton(BuildContext context) {
+  Widget _buildLoadingCard() {
     return Container(
       width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: () {
-          context.go('/matching');
-        },
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.white,
-          foregroundColor: brandOrange,
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-            side: BorderSide(color: brandOrange, width: 2),
+      height: 120,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
           ),
-          elevation: 0,
+        ],
+      ),
+      child: const Center(
+        child: CircularProgressIndicator(
+          color: Color(0xFFFF6B35),
         ),
-        icon: Icon(Icons.search, color: brandOrange),
-        label: Text(
-          'Find New Group',
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: brandOrange,
+      ),
+    );
+  }
+
+  Widget _buildErrorCard(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.red.shade200),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.error_outline, color: Colors.red.shade400, size: 32),
+          const SizedBox(height: 12),
+          Text(
+            'Unable to load your group status',
+            style: GoogleFonts.poppins(
+              color: Colors.red.shade700,
+              fontWeight: FontWeight.w600,
+            ),
           ),
+          const SizedBox(height: 8),
+          ElevatedButton(
+            onPressed: () {
+              // Trigger rebuild by calling setState if this was a StatefulWidget
+              // For now, user can navigate away and come back
+              context.go('/matching');
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade400,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Try Matching'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActiveGroupCard(BuildContext context, String groupId) {
+    return InkWell(
+      onTap: () => context.go('/my-group/$groupId'),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [brandOrange, brandOrange.withOpacity(0.8)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: brandOrange.withOpacity(0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: const Icon(
+                Icons.chat_bubble_rounded,
+                color: Colors.white,
+                size: 32,
+              ),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Your Group Chat',
+                    style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Continue chatting with your BiteMates',
+                    style: GoogleFonts.poppins(
+                      color: Colors.white.withOpacity(0.9),
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.arrow_forward_ios,
+              color: Colors.white.withOpacity(0.8),
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFindGroupCard(BuildContext context) {
+    return InkWell(
+      onTap: () => context.go('/matching'),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [brandOrange, brandOrange.withOpacity(0.8)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: brandOrange.withOpacity(0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: const Icon(
+                Icons.group_add_rounded,
+                color: Colors.white,
+                size: 32,
+              ),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Find Your BiteMates',
+                    style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Start matching with fellow food lovers',
+                    style: GoogleFonts.poppins(
+                      color: Colors.white.withOpacity(0.9),
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.arrow_forward_ios,
+              color: Colors.white.withOpacity(0.8),
+              size: 20,
+            ),
+          ],
         ),
       ),
     );
