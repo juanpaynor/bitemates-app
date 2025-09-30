@@ -82,6 +82,13 @@ class _MyGroupScreenState extends State<MyGroupScreen> {
     return Scaffold(
       backgroundColor: brandBackground,
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          color: brandBlack,
+          onPressed: () {
+            Navigator.of(context).maybePop();
+          },
+        ),
         title: Text(
           'Group Details',
           style: GoogleFonts.poppins(
